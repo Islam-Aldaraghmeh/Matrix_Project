@@ -5,6 +5,7 @@ import Scene from './components/Scene';
 import ControlsPanel from './components/ControlsPanel';
 import InfoPanel from './components/InfoPanel';
 import { createMatrixEvaluator, multiplyMatrixVector } from './utils/mathUtils';
+import type { MatrixBackend } from './utils/mathUtils';
 import { easingFunctions } from './utils/easing';
 import { activationFunctionMap, parseCustomActivation } from './utils/activationFunctions';
 import { generateRandomGLPlusMatrix } from './utils/randomMatrix';
@@ -209,6 +210,7 @@ const sanitizeProfileData = (data: ProfileData | null): ProfileData | null => {
     const preciseT = sanitizeNumber(data.tPrecision, 0.01);
     const safeT = sanitizeNumber(data.t, animationConfig.startT);
     const clampedT = THREE.MathUtils.clamp(safeT, animationConfig.startT, animationConfig.endT);
+    const sanitizeBackend = (value: unknown): MatrixBackend => (value === 'exp-log' ? 'exp-log' : 'kan');
 
     return {
         version: data.version ?? 1,
@@ -234,7 +236,8 @@ const sanitizeProfileData = (data: ProfileData | null): ProfileData | null => {
         linearEigenInterpolation: ensureBoolean(data.linearEigenInterpolation, false),
         dotSize: THREE.MathUtils.clamp(sanitizeNumber(data.dotSize, DOT_SIZE_DEFAULT), DOT_SIZE_MIN, DOT_SIZE_MAX),
         autoNormalizeVectors: ensureBoolean(data.autoNormalizeVectors, false),
-        exploreRandomizeVectors: ensureBoolean(data.exploreRandomizeVectors, true)
+        exploreRandomizeVectors: ensureBoolean(data.exploreRandomizeVectors, true),
+        matrixBackend: sanitizeBackend(data.matrixBackend)
     };
 };
 const mapEigenvalues = (
@@ -284,6 +287,7 @@ function App() {
     const [showEndMarkers, setShowEndMarkers] = useState<boolean>(true);
     const [dynamicFadingPath, setDynamicFadingPath] = useState<boolean>(false);
     const [exploreRandomizeVectors, setExploreRandomizeVectors] = useState<boolean>(true);
+    const [matrixBackend, setMatrixBackend] = useState<MatrixBackend>('kan');
     const [selectedPresetName, setSelectedPresetName] = useState(PRESET_MATRICES[0].name);
     const [matrixScalar, setMatrixScalar] = useState<number>(1);
     const [matrixExponent, setMatrixExponent] = useState<number>(1);
@@ -638,7 +642,8 @@ function App() {
             normalizeMatrix,
             linearEigenInterpolation,
             dotSize,
-            autoNormalizeVectors
+            autoNormalizeVectors,
+            matrixBackend
         };
     }, [
         matrixA,
@@ -667,7 +672,8 @@ function App() {
         normalizeMatrix,
         linearEigenInterpolation,
         dotSize,
-        autoNormalizeVectors
+        autoNormalizeVectors,
+        matrixBackend
     ]);
 
     const applyProfileData = useCallback((rawData: ProfileData | null) => {
@@ -693,6 +699,7 @@ function App() {
         setShowEndMarkers(data.showEndMarkers);
         setDynamicFadingPath(data.dynamicFadingPath);
         setExploreRandomizeVectors(data.exploreRandomizeVectors);
+        setMatrixBackend(data.matrixBackend);
         setAnimationConfig({
             duration: data.animationConfig.duration,
             startT: data.animationConfig.startT,
@@ -882,8 +889,8 @@ function App() {
 
     const matrixEvaluator = useMemo(() => {
         if (!matrixPreparation.matrix) return null;
-        return createMatrixEvaluator(matrixPreparation.matrix);
-    }, [matrixPreparation.matrix]);
+        return createMatrixEvaluator(matrixPreparation.matrix, matrixBackend);
+    }, [matrixPreparation.matrix, matrixBackend]);
 
     const samplingConfig = useMemo(() => {
         const range = animationConfig.endT - animationConfig.startT;
@@ -1257,6 +1264,7 @@ function App() {
                     matrixExponent={matrixExponent}
                     normalizeMatrix={normalizeMatrix}
                     linearEigenInterpolation={linearEigenInterpolation}
+                    matrixBackend={matrixBackend}
                     normalizationWarning={normalizationWarning}
                     onMatrixChange={handleMatrixChange}
                     onPresetSelect={handlePresetSelect}
@@ -1288,6 +1296,7 @@ function App() {
                     onAnimationConfigChange={setAnimationConfig}
                     onRepeatToggle={handleRepeatToggle}
                     onActivationConfigChange={setActivation}
+                    onMatrixBackendChange={setMatrixBackend}
                     onAddWall={handleAddWall}
                     onUpdateWall={handleUpdateWall}
                     onRemoveWall={handleRemoveWall}

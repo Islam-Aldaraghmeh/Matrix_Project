@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Matrix3, Vector3, VectorObject, Wall, FadingPathStyle } from '../types';
+import type { MatrixBackend } from '../utils/mathUtils';
 import type { ActivationFunction } from '../utils/activationFunctions';
 import { easingFunctions } from '../utils/easing';
 import { PRESET_MATRICES } from '../App';
@@ -46,6 +47,7 @@ interface ControlsPanelProps {
     matrixExponent: number;
     normalizeMatrix: boolean;
     linearEigenInterpolation: boolean;
+    matrixBackend: MatrixBackend;
     normalizationWarning: string | null;
     onMatrixChange: (matrix: Matrix3) => void;
     onPresetSelect: (name: string) => void;
@@ -73,6 +75,7 @@ interface ControlsPanelProps {
     onResetTime: () => void;
     onPlayPause: () => void;
     onExploreToggle: () => void;
+    onMatrixBackendChange: (backend: MatrixBackend) => void;
     onExploreRandomizeVectorsChange: (enabled: boolean) => void;
     onAnimationConfigChange: (config: AnimationConfig) => void;
     onRepeatToggle: (enabled: boolean) => void;
@@ -198,6 +201,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         matrixExponent,
         normalizeMatrix,
         linearEigenInterpolation,
+        matrixBackend,
         normalizationWarning,
         onMatrixChange,
         onPresetSelect,
@@ -225,6 +229,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onResetTime,
         onPlayPause,
         onExploreToggle,
+        onMatrixBackendChange,
         onExploreRandomizeVectorsChange,
         onAnimationConfigChange,
         onRepeatToggle,
@@ -723,6 +728,38 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             >
                                 {PRESET_MATRICES.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
                             </select>
+                        </div>
+
+                        <div>
+                            <h2 className="text-lg font-semibold mb-2 text-gray-200">Computation Backend</h2>
+                            <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-800/70">
+                                <p className="text-xs text-gray-400 mb-2">Pick how A<sup>t</sup> is built when animating.</p>
+                                <div className="flex bg-gray-800/70 rounded-full p-1">
+                                    {([
+                                        { value: 'kan', label: 'KAN', helper: 'Rotation·Scale·Shear' },
+                                        { value: 'exp-log', label: 'exp(t ln A)', helper: 'Log / exp path' },
+                                    ] as { value: MatrixBackend; label: string; helper: string }[]).map(option => {
+                                        const active = matrixBackend === option.value;
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => onMatrixBackendChange(option.value)}
+                                                className={`flex-1 text-xs sm:text-sm py-2 px-3 rounded-full transition-colors ${
+                                                    active
+                                                        ? 'bg-cyan-500 text-gray-900 font-semibold shadow-lg shadow-cyan-500/30'
+                                                        : 'text-gray-300'
+                                                }`}
+                                            >
+                                                <span className="block">{option.label}</span>
+                                                <span className={`text-[10px] uppercase tracking-wide ${active ? 'text-gray-900/70' : 'text-gray-300/60'}`}>
+                                                    {option.helper}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                         
                         <div>

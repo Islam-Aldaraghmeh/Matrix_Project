@@ -1,4 +1,5 @@
 import type { Matrix3, Vector3, VectorObject, Wall, FadingPathStyle } from '../types';
+import type { MatrixBackend } from './mathUtils';
 
 export interface AnimationConfigSnapshot {
     duration: number;
@@ -37,6 +38,7 @@ export interface ProfileData {
     dotSize: number;
     autoNormalizeVectors: boolean;
     exploreRandomizeVectors: boolean;
+    matrixBackend: MatrixBackend;
 }
 
 export interface ProfileSummary {

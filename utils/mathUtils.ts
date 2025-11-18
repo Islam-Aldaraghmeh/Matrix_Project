@@ -4,6 +4,7 @@ import type { ActivationFunction } from './activationFunctions';
 
 const EPSILON = 1e-9;
 const SMALL_ANGLE = 1e-7;
+const IMAGINARY_TOLERANCE = 1e-6;
 
 const identityMatrix = (): Matrix3 => [
     [1, 0, 0],
@@ -128,12 +129,32 @@ const rotationMatrixFromAxisAngle = (axis: Vector3, angle: number): Matrix3 => {
     ];
 };
 
-const toMatrix3 = (value: math.Matrix | number[][]): Matrix3 => {
-    const arr = Array.isArray(value) ? value : (value.toArray() as number[][]);
+const toFiniteNumber = (value: unknown): number => {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : NaN;
+    }
+    if (typeof value === 'object' && value !== null) {
+        if ('re' in value && 'im' in value) {
+            const complex = value as math.Complex;
+            if (Math.abs(complex.im) > IMAGINARY_TOLERANCE) {
+                console.warn('Dropping imaginary component during matrix conversion:', complex.im);
+            }
+            return complex.re;
+        }
+        if ('toNumber' in value && typeof (value as { toNumber?: () => number }).toNumber === 'function') {
+            return (value as { toNumber: () => number }).toNumber();
+        }
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const toMatrix3 = (value: math.Matrix | (number | math.Complex | math.BigNumber)[][]): Matrix3 => {
+    const arr = Array.isArray(value) ? value : (value.toArray() as (number | math.Complex | math.BigNumber)[][]);
     return [
-        [Number(arr[0][0]), Number(arr[0][1]), Number(arr[0][2])],
-        [Number(arr[1][0]), Number(arr[1][1]), Number(arr[1][2])],
-        [Number(arr[2][0]), Number(arr[2][1]), Number(arr[2][2])],
+        [toFiniteNumber(arr[0][0]), toFiniteNumber(arr[0][1]), toFiniteNumber(arr[0][2])],
+        [toFiniteNumber(arr[1][0]), toFiniteNumber(arr[1][1]), toFiniteNumber(arr[1][2])],
+        [toFiniteNumber(arr[2][0]), toFiniteNumber(arr[2][1]), toFiniteNumber(arr[2][2])],
     ];
 };
 
@@ -342,7 +363,9 @@ export interface MatrixEvaluator {
     applyToVector: (t: number, v: Vector3, options?: TransformOptions) => Vector3 | null;
 }
 
-export function createMatrixEvaluator(A: Matrix3): MatrixEvaluator | null {
+export type MatrixBackend = 'kan' | 'exp-log';
+
+const createKanEvaluator = (A: Matrix3): MatrixEvaluator | null => {
     try {
         const pathData = buildKanPath(A);
         if (!pathData) {
@@ -400,10 +423,108 @@ export function createMatrixEvaluator(A: Matrix3): MatrixEvaluator | null {
         console.error('Matrix evaluator error:', error);
         return null;
     }
+};
+
+const createExpLogEvaluator = (A: Matrix3): MatrixEvaluator | null => {
+    try {
+        const detA = determinant3(A);
+        if (!Number.isFinite(detA) || Math.abs(detA) < EPSILON) {
+            console.warn('Exp-log backend requires an invertible matrix.');
+            return null;
+        }
+
+        const eigResult = math.eigs(math.matrix(A));
+        const eigenvectorEntries =
+            (eigResult as unknown as { eigenvectors?: { vector: math.Matrix }[] }).eigenvectors ||
+            (eigResult as unknown as { vectors?: { vector: math.Matrix }[] }).vectors;
+        if (!eigResult.values || !Array.isArray(eigenvectorEntries)) {
+            return null;
+        }
+        const eigenValues = (math.matrix(eigResult.values).toArray() as (number | math.Complex)[]);
+
+        const hasZeroEigen = eigenValues.some(value => {
+            if (typeof value === 'number') {
+                return Math.abs(value) < EPSILON;
+            }
+            const complex = value as math.Complex;
+            return Math.hypot(complex.re, complex.im) < EPSILON;
+        });
+        if (hasZeroEigen) {
+            console.warn('Exp-log backend requires eigenvalues with non-zero magnitude.');
+            return null;
+        }
+
+        const logDiagValues = eigenValues.map(value => math.log(value as math.MathType));
+        const logDiag = math.diag(logDiagValues);
+        const columnVectors = eigenvectorEntries.map(entry => {
+            const vectorArray = typeof entry.vector?.toArray === 'function'
+                ? entry.vector.toArray()
+                : entry.vector;
+            if (Array.isArray(vectorArray) && Array.isArray(vectorArray[0]) && vectorArray[0].length === 1) {
+                return vectorArray.map((row: [math.MathType]) => row[0]);
+            }
+            return vectorArray;
+        });
+        if (columnVectors.length === 0) {
+            return null;
+        }
+        const dimension = Array.isArray(columnVectors[0]) ? columnVectors[0].length : 0;
+        if (dimension === 0 || columnVectors.some(col => !Array.isArray(col) || col.length !== dimension)) {
+            console.warn('Invalid eigenvector data for exp-log backend');
+            return null;
+        }
+        const Vdata = Array.from({ length: dimension }, (_, rowIndex) =>
+            columnVectors.map(col => col[rowIndex])
+        );
+        const V = math.matrix(Vdata);
+        const Vinv = math.inv(V);
+        const logMatrix = math.multiply(V, math.multiply(logDiag, Vinv)) as math.Matrix;
+
+        const cache = new Map<number, Matrix3>();
+        const getMatrixAt = (t: number): Matrix3 | null => {
+            const tKey = timeKey(t);
+            if (!Number.isFinite(tKey)) return null;
+            if (cache.has(tKey)) {
+                return cache.get(tKey)!;
+            }
+            const scaled = math.multiply(logMatrix, t) as math.Matrix;
+            const expResult = math.expm(scaled) as math.Matrix;
+            const matrix = toMatrix3(expResult);
+            cache.set(tKey, matrix);
+            return matrix;
+        };
+
+        const applyToVector = (t: number, v: Vector3): Vector3 | null => {
+            const mat = getMatrixAt(t);
+            if (!mat) return null;
+            return multiplyMatrixVector(mat, v);
+        };
+
+        return {
+            eigenValues,
+            getMatrixAt: (t: number, _options?: TransformOptions) => getMatrixAt(t),
+            applyToVector: (t: number, v: Vector3, _options?: TransformOptions) => applyToVector(t, v),
+        };
+    } catch (error) {
+        console.error('Exp-log evaluator error:', error);
+        return null;
+    }
+};
+
+export function createMatrixEvaluator(A: Matrix3, backend: MatrixBackend = 'kan'): MatrixEvaluator | null {
+    if (backend === 'exp-log') {
+        return createExpLogEvaluator(A);
+    }
+    return createKanEvaluator(A);
 }
 
-export function calculateAt(A: Matrix3, t: number, options: TransformOptions = {}): Matrix3 | null {
-    const evaluator = createMatrixEvaluator(A);
+export function calculateAt(
+    A: Matrix3,
+    t: number,
+    options: TransformOptions = {},
+    backend: MatrixBackend = 'kan'
+): Matrix3 | null {
+    const evaluator = createMatrixEvaluator(A, backend);
     return evaluator ? evaluator.getMatrixAt(t, options) : null;
 }
 
@@ -411,9 +532,10 @@ export function calculateAtvRaw(
     A: Matrix3,
     v: Vector3,
     t: number,
-    options: TransformOptions = {}
+    options: TransformOptions = {},
+    backend: MatrixBackend = 'kan'
 ): Vector3 | null {
-    const evaluator = createMatrixEvaluator(A);
+    const evaluator = createMatrixEvaluator(A, backend);
     return evaluator ? evaluator.applyToVector(t, v, options) : null;
 }
 
@@ -422,9 +544,10 @@ export function calculateAtv(
     v: Vector3,
     t: number,
     activationFn: ActivationFunction,
-    options: TransformOptions = {}
+    options: TransformOptions = {},
+    backend: MatrixBackend = 'kan'
 ): Vector3 | null {
-    const evaluator = createMatrixEvaluator(A);
+    const evaluator = createMatrixEvaluator(A, backend);
     if (!evaluator) return null;
     const raw = evaluator.applyToVector(t, v, options);
     if (!raw) return null;
