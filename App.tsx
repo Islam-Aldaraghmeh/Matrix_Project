@@ -290,6 +290,8 @@ function App() {
     const [linearEigenInterpolation, setLinearEigenInterpolation] = useState<boolean>(false);
     const [profileSummaries, setProfileSummaries] = useState<ProfileSummary[]>([]);
     const [activeProfileName, setActiveProfileName] = useState<string | null>(null);
+    const [controlsPanelVisible, setControlsPanelVisible] = useState<boolean>(true);
+    const [infoPanelVisible, setInfoPanelVisible] = useState<boolean>(true);
 
     // Animation state
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -1214,71 +1216,74 @@ function App() {
 
     return (
         <div className="w-screen h-screen flex flex-col md:flex-row bg-gray-900 overflow-hidden">
-            <ControlsPanel
-                matrix={matrixA}
-                vectors={vectors}
-                autoNormalizeVectors={autoNormalizeVectors}
-                walls={walls}
-                t={t}
-                tPrecision={tPrecision}
-                dotMode={dotMode}
-                dotSize={dotSize}
-                fadingPath={fadingPath}
-                fadingPathLength={fadingPathLength}
-                fadingPathStyle={fadingPathStyle}
-                showStartMarkers={showStartMarkers}
-                showEndMarkers={showEndMarkers}
-                dynamicFadingPath={dynamicFadingPath}
-                isPlaying={isPlaying}
-                isExploring={isExploring}
-                animationConfig={animationConfig}
-                repeatAnimation={repeatAnimation}
-                activationConfig={activation}
-                selectedPresetName={selectedPresetName}
-                matrixScalar={matrixScalar}
-                matrixExponent={matrixExponent}
-                normalizeMatrix={normalizeMatrix}
-                linearEigenInterpolation={linearEigenInterpolation}
-                normalizationWarning={normalizationWarning}
-                onMatrixChange={handleMatrixChange}
-                onPresetSelect={handlePresetSelect}
-                onMatrixScalarChange={handleMatrixScalarChange}
-                onMatrixExponentChange={handleMatrixExponentChange}
-                onNormalizeToggle={handleNormalizeToggle}
-                onLinearInterpolationToggle={handleLinearInterpolationToggle}
-                onVectorChange={handleVectorChange}
-                onVectorColorChange={handleVectorColorChange}
-                onAddVector={handleAddVector}
-                onNormalizeVectors={handleNormalizeVectors}
-                onAutoNormalizeVectorsChange={handleAutoNormalizeToggle}
-                onRemoveVector={handleRemoveVector}
-                onToggleVisibility={handleToggleVectorVisibility}
-                onTChange={handleTChange}
-                onTPrecisionChange={setTPrecision}
-                onDotModeChange={setDotMode}
-                onDotSizeChange={handleDotSizeChange}
-                onFadingPathToggle={setFadingPath}
-                onFadingPathLengthChange={handleFadingPathLengthChange}
-                onFadingPathStyleChange={setFadingPathStyle}
-                onDynamicFadingPathChange={setDynamicFadingPath}
-                onShowStartMarkersChange={setShowStartMarkers}
-                onShowEndMarkersChange={setShowEndMarkers}
-                onResetTime={resetTime}
-                onPlayPause={handlePlayPause}
-                onExploreToggle={handleExploreToggle}
-                onAnimationConfigChange={setAnimationConfig}
-                onRepeatToggle={handleRepeatToggle}
-                onActivationConfigChange={setActivation}
-                onAddWall={handleAddWall}
-                onUpdateWall={handleUpdateWall}
-                onRemoveWall={handleRemoveWall}
-                profileSummaries={profileSummaries}
-                activeProfileName={activeProfileName}
-                onProfileSave={handleProfileSave}
-                onProfileLoad={handleProfileLoad}
-                onProfileDelete={handleProfileDelete}
-                error={error}
-            />
+            {controlsPanelVisible && (
+                <ControlsPanel
+                    matrix={matrixA}
+                    vectors={vectors}
+                    autoNormalizeVectors={autoNormalizeVectors}
+                    walls={walls}
+                    t={t}
+                    tPrecision={tPrecision}
+                    dotMode={dotMode}
+                    dotSize={dotSize}
+                    fadingPath={fadingPath}
+                    fadingPathLength={fadingPathLength}
+                    fadingPathStyle={fadingPathStyle}
+                    showStartMarkers={showStartMarkers}
+                    showEndMarkers={showEndMarkers}
+                    dynamicFadingPath={dynamicFadingPath}
+                    isPlaying={isPlaying}
+                    isExploring={isExploring}
+                    animationConfig={animationConfig}
+                    repeatAnimation={repeatAnimation}
+                    activationConfig={activation}
+                    selectedPresetName={selectedPresetName}
+                    matrixScalar={matrixScalar}
+                    matrixExponent={matrixExponent}
+                    normalizeMatrix={normalizeMatrix}
+                    linearEigenInterpolation={linearEigenInterpolation}
+                    normalizationWarning={normalizationWarning}
+                    onMatrixChange={handleMatrixChange}
+                    onPresetSelect={handlePresetSelect}
+                    onMatrixScalarChange={handleMatrixScalarChange}
+                    onMatrixExponentChange={handleMatrixExponentChange}
+                    onNormalizeToggle={handleNormalizeToggle}
+                    onLinearInterpolationToggle={handleLinearInterpolationToggle}
+                    onVectorChange={handleVectorChange}
+                    onVectorColorChange={handleVectorColorChange}
+                    onAddVector={handleAddVector}
+                    onNormalizeVectors={handleNormalizeVectors}
+                    onAutoNormalizeVectorsChange={handleAutoNormalizeToggle}
+                    onRemoveVector={handleRemoveVector}
+                    onToggleVisibility={handleToggleVectorVisibility}
+                    onTChange={handleTChange}
+                    onTPrecisionChange={setTPrecision}
+                    onDotModeChange={setDotMode}
+                    onDotSizeChange={handleDotSizeChange}
+                    onFadingPathToggle={setFadingPath}
+                    onFadingPathLengthChange={handleFadingPathLengthChange}
+                    onFadingPathStyleChange={setFadingPathStyle}
+                    onDynamicFadingPathChange={setDynamicFadingPath}
+                    onShowStartMarkersChange={setShowStartMarkers}
+                    onShowEndMarkersChange={setShowEndMarkers}
+                    onResetTime={resetTime}
+                    onPlayPause={handlePlayPause}
+                    onExploreToggle={handleExploreToggle}
+                    onAnimationConfigChange={setAnimationConfig}
+                    onRepeatToggle={handleRepeatToggle}
+                    onActivationConfigChange={setActivation}
+                    onAddWall={handleAddWall}
+                    onUpdateWall={handleUpdateWall}
+                    onRemoveWall={handleRemoveWall}
+                    profileSummaries={profileSummaries}
+                    activeProfileName={activeProfileName}
+                    onProfileSave={handleProfileSave}
+                    onProfileLoad={handleProfileLoad}
+                    onProfileDelete={handleProfileDelete}
+                    error={error}
+                    onCollapse={() => setControlsPanelVisible(false)}
+                />
+            )}
             <div className="flex-grow h-1/2 md:h-full w-full md:w-auto relative pointer-events-none">
                  <div className="absolute inset-0 pointer-events-auto">
                     <Scene
@@ -1294,28 +1299,46 @@ function App() {
                         dynamicFadingPath={dynamicFadingPath}
                     />
                  </div>
-                 <InfoPanel
-                    baseMatrix={matrixA}
-                    effectiveMatrix={matrixPreparation.matrix}
-                    matrixScalar={matrixScalar}
-                    matrixExponent={matrixPreparation.exponent}
-                    normalizeRequested={normalizeMatrix}
-                    normalizeApplied={matrixPreparation.normalizationApplied}
-                    determinantBefore={matrixPreparation.determinantBefore}
-                    determinantAfter={matrixPreparation.determinantAfter}
-                    normalizationWarning={normalizationWarning}
-                    walls={walls}
-                    wallContactCounts={wallContactCounts}
-                    eigenvalues={effectiveEigenvalues}
-                    eigenvaluesAtT={matrixAtEigenvalues}
-                    matrixAt={matrixAt}
-                    determinantAtT={matrixAtDeterminant}
-                    vectorV={firstVisibleVector?.value || null}
-                    rawTransformedV={rawTransformedV}
-                    transformedV={firstVisibleSceneData?.interpolatedVector ? [firstVisibleSceneData.interpolatedVector.x, firstVisibleSceneData.interpolatedVector.y, firstVisibleSceneData.interpolatedVector.z] : null}
-                    activationFnName={activation.name}
-                    customActivationFnStr={activation.customFnStr}
-                 />
+                 {!controlsPanelVisible && (
+                    <button
+                        onClick={() => setControlsPanelVisible(true)}
+                        className="absolute top-6 left-6 px-4 py-2 rounded-lg bg-gray-900/80 border border-gray-700 text-cyan-300 hover:text-white hover:border-cyan-400 transition-colors pointer-events-auto shadow-lg"
+                    >
+                        Show Controls
+                    </button>
+                 )}
+                 {infoPanelVisible ? (
+                    <InfoPanel
+                        baseMatrix={matrixA}
+                        effectiveMatrix={matrixPreparation.matrix}
+                        matrixScalar={matrixScalar}
+                        matrixExponent={matrixPreparation.exponent}
+                        normalizeRequested={normalizeMatrix}
+                        normalizeApplied={matrixPreparation.normalizationApplied}
+                        determinantBefore={matrixPreparation.determinantBefore}
+                        determinantAfter={matrixPreparation.determinantAfter}
+                        normalizationWarning={normalizationWarning}
+                        walls={walls}
+                        wallContactCounts={wallContactCounts}
+                        eigenvalues={effectiveEigenvalues}
+                        eigenvaluesAtT={matrixAtEigenvalues}
+                        matrixAt={matrixAt}
+                        determinantAtT={matrixAtDeterminant}
+                        vectorV={firstVisibleVector?.value || null}
+                        rawTransformedV={rawTransformedV}
+                        transformedV={firstVisibleSceneData?.interpolatedVector ? [firstVisibleSceneData.interpolatedVector.x, firstVisibleSceneData.interpolatedVector.y, firstVisibleSceneData.interpolatedVector.z] : null}
+                        activationFnName={activation.name}
+                        customActivationFnStr={activation.customFnStr}
+                        onCollapse={() => setInfoPanelVisible(false)}
+                    />
+                 ) : (
+                    <button
+                        onClick={() => setInfoPanelVisible(true)}
+                        className="absolute top-6 right-6 px-4 py-2 rounded-lg bg-gray-900/80 border border-gray-700 text-cyan-300 hover:text-white hover:border-cyan-400 transition-colors pointer-events-auto shadow-lg"
+                    >
+                        Show Info
+                    </button>
+                 )}
             </div>
         </div>
     );

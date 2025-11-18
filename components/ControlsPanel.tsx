@@ -84,6 +84,7 @@ interface ControlsPanelProps {
     onProfileLoad: (name: string) => ProfileOperationResult;
     onProfileDelete: (name: string) => ProfileOperationResult;
     error: string | null;
+    onCollapse?: () => void;
 }
 
 const NumberInput: React.FC<{
@@ -232,7 +233,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onProfileSave,
         onProfileLoad,
         onProfileDelete,
-        error
+        error,
+        onCollapse
     } = props;
     
     const [activeTab, setActiveTab] = useState<'controls' | 'animation' | 'walls' | 'profiles'>('controls');
@@ -336,8 +338,20 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     return (
         <div className="w-full md:w-[28rem] bg-gray-800 flex flex-col flex-shrink-0 shadow-2xl z-10">
              <div className="p-6 pb-0">
-                <h1 className="text-2xl font-bold text-cyan-400 mb-1">Matrix Transformation</h1>
-                <p className="text-lg text-gray-300 mb-4 font-mono">f(A<sup>t</sup>v) Visualizer</p>
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-cyan-400 mb-1">Matrix Transformation</h1>
+                        <p className="text-lg text-gray-300 mb-4 font-mono">f(A<sup>t</sup>v) Visualizer</p>
+                    </div>
+                    {onCollapse && (
+                        <button
+                            onClick={onCollapse}
+                            className="text-xs uppercase tracking-wide text-gray-400 hover:text-white border border-gray-600/70 hover:border-cyan-500 rounded px-3 py-1 transition-colors"
+                        >
+                            Hide
+                        </button>
+                    )}
+                </div>
             </div>
             
             <div className="border-b border-gray-700 px-4">

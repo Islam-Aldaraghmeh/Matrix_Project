@@ -22,6 +22,7 @@ interface InfoPanelProps {
     transformedV: Vector3 | null;
     activationFnName: string;
     customActivationFnStr: string;
+    onCollapse?: () => void;
 }
 
 const formatNum = (n: number | undefined) => (n !== undefined && isFinite(n) ? n.toFixed(2).padStart(7, ' ') : '  -    ');
@@ -83,7 +84,8 @@ const InfoPanel: React.FC<InfoPanelProps> = ({
     rawTransformedV,
     transformedV,
     activationFnName,
-    customActivationFnStr
+    customActivationFnStr,
+    onCollapse
 }) => {
     const activationDisplay = activationFnName.toLowerCase() === 'custom' 
         ? `f(x) = ${customActivationFnStr || 'x'}`
@@ -115,6 +117,20 @@ const InfoPanel: React.FC<InfoPanelProps> = ({
 
     return (
         <div className="absolute top-6 right-6 bg-gray-900/80 backdrop-blur-md text-white p-6 rounded-xl shadow-2xl font-mono text-sm border border-gray-700 pointer-events-auto w-[22rem] max-w-[24rem]">
+            <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Panel</p>
+                    <p className="text-cyan-300 font-semibold">Info & Diagnostics</p>
+                </div>
+                {onCollapse && (
+                    <button
+                        onClick={onCollapse}
+                        className="text-xs uppercase tracking-wide text-gray-400 hover:text-white border border-gray-600/70 hover:border-cyan-500 rounded px-3 py-1 transition-colors"
+                    >
+                        Hide
+                    </button>
+                )}
+            </div>
             <div className="mb-3">
                 <p className="text-cyan-400">A (base input):</p>
                 <pre className="text-gray-300">{formatMatrix(baseMatrix)}</pre>
