@@ -23,10 +23,12 @@ interface ActivationConfig {
 interface ControlsPanelProps {
     matrix: Matrix3;
     vectors: VectorObject[];
+    autoNormalizeVectors: boolean;
     walls: Wall[];
     t: number;
     tPrecision: number;
     dotMode: boolean;
+    dotSize: number;
     fadingPath: boolean;
     fadingPathLength: number;
     fadingPathStyle: FadingPathStyle;
@@ -54,11 +56,13 @@ interface ControlsPanelProps {
     onVectorColorChange: (id: number, color: string) => void;
     onAddVector: () => void;
     onNormalizeVectors: () => void;
+    onAutoNormalizeVectorsChange: (enabled: boolean) => void;
     onRemoveVector: (id: number) => void;
     onToggleVisibility: (id: number) => void;
     onTChange: (t: number) => void;
     onTPrecisionChange: (precision: number) => void;
     onDotModeChange: (enabled: boolean) => void;
+    onDotSizeChange: (size: number) => void;
     onFadingPathToggle: (enabled: boolean) => void;
     onFadingPathLengthChange: (length: number) => void;
     onFadingPathStyleChange: (style: FadingPathStyle) => void;
@@ -160,15 +164,20 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, children: Reac
     </button>
 );
 
+const DOT_SIZE_MIN = 0.02;
+const DOT_SIZE_MAX = 0.2;
+
 
 const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     const {
         matrix,
         vectors,
+        autoNormalizeVectors,
         walls,
         t,
         tPrecision,
         dotMode,
+        dotSize,
         fadingPath,
         fadingPathLength,
         fadingPathStyle,
@@ -196,11 +205,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onVectorColorChange,
         onAddVector,
         onNormalizeVectors,
+        onAutoNormalizeVectorsChange,
         onRemoveVector,
         onToggleVisibility,
         onTChange,
         onTPrecisionChange,
         onDotModeChange,
+        onDotSizeChange,
         onFadingPathToggle,
         onFadingPathLengthChange,
         onFadingPathStyleChange,
@@ -355,6 +366,26 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                     >
                                         <span className={`${dotMode ? 'translate-x-6' : 'translate-x-1'} inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}/>
                                     </button>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
+                                    <div>
+                                        <label htmlFor="dotSizeControl" className="font-medium text-gray-300">Dot Size</label>
+                                        <p className="text-xs text-gray-400 mt-1">Tweak dot radius when Dot Mode is active.</p>
+                                    </div>
+                                    <div className="flex flex-col items-end w-36">
+                                        <input
+                                            id="dotSizeControl"
+                                            type="range"
+                                            min={DOT_SIZE_MIN}
+                                            max={DOT_SIZE_MAX}
+                                            step={0.01}
+                                            value={dotSize}
+                                            onChange={(e) => onDotSizeChange(parseFloat(e.target.value))}
+                                            className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-cyan-500 disabled:opacity-40"
+                                            disabled={!dotMode}
+                                        />
+                                        <span className="text-xs text-gray-400 mt-1">{dotSize.toFixed(2)}</span>
+                                    </div>
                                 </div>
                                 <div className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
                                     <div>
@@ -580,6 +611,18 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                     >
                                         Normalize
                                     </button>
+                                    <div className="flex items-center gap-2 bg-gray-900/60 rounded px-2 py-1">
+                                        <span className="text-xs font-semibold text-gray-300">Auto</span>
+                                        <button
+                                            id="autoNormalizeToggle"
+                                            role="switch"
+                                            aria-checked={autoNormalizeVectors}
+                                            onClick={() => onAutoNormalizeVectorsChange(!autoNormalizeVectors)}
+                                            className={`${autoNormalizeVectors ? 'bg-cyan-500' : 'bg-gray-600'} relative inline-flex items-center h-5 rounded-full w-10 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-cyan-500`}
+                                        >
+                                            <span className={`${autoNormalizeVectors ? 'translate-x-5' : 'translate-x-1'} inline-block w-3 h-3 transform bg-white rounded-full transition-transform`} />
+                                        </button>
+                                    </div>
                                     <button 
                                         onClick={onAddVector}
                                         className="bg-gray-700 hover:bg-gray-600 text-cyan-400 text-xs font-bold py-1 px-2 rounded transition-colors duration-300"

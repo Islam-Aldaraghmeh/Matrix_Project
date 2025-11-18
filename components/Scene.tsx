@@ -27,6 +27,7 @@ interface SceneProps {
    sceneData: SceneObject[];
    walls: Wall[];
    dotMode: boolean;
+   dotSize: number;
    fadingPath: boolean;
    fadingPathLength: number;
    fadingPathStyle: FadingPathStyle;
@@ -39,6 +40,7 @@ const Scene: React.FC<SceneProps> = React.memo(({
     sceneData,
     walls,
     dotMode,
+    dotSize,
     fadingPath,
     fadingPathLength,
     fadingPathStyle,
@@ -175,13 +177,13 @@ const Scene: React.FC<SceneProps> = React.memo(({
                     {dotMode ? (
                         <>
                             {/* Initial Vector (v) */}
-                            {showStartMarkers && <VectorDot position={initialVector} color={color} />}
+                            {showStartMarkers && <VectorDot position={initialVector} color={color} size={dotSize} />}
 
                             {/* Final Vector (A*v) */}
-                            {showEndMarkers && finalVector && <VectorDot position={finalVector} color={color} opacity={0.5} />}
+                            {showEndMarkers && finalVector && <VectorDot position={finalVector} color={color} opacity={0.5} size={dotSize} />}
                             
                             {/* Interpolated Vector (A^t*v) */}
-                            {interpolatedVector && <VectorDot position={interpolatedVector} color="#fde047" />}
+                            {interpolatedVector && <VectorDot position={interpolatedVector} color="#fde047" size={dotSize} />}
                         </>
                     ) : (
                         <>

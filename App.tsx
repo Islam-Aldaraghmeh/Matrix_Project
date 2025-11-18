@@ -51,11 +51,42 @@ const INITIAL_VECTORS: VectorObject[] = [
     { id: Date.now(), value: [2, 0, 0.5], visible: true, color: VECTOR_COLORS[0] }
 ];
 
-const randomVector = (): Vector3 => [
-    Math.random() * 4 - 2,
-    Math.random() * 4 - 2,
-    Math.random() * 4 - 2
-];
+const DOT_SIZE_DEFAULT = 0.08;
+const DOT_SIZE_MIN = 0.02;
+const DOT_SIZE_MAX = 0.2;
+
+const randomVector = (nonNegative = false): Vector3 => {
+    const base: Vector3 = [
+        Math.random() * 4 - 2,
+        Math.random() * 4 - 2,
+        Math.random() * 4 - 2
+    ];
+    if (!nonNegative) {
+        return base;
+    }
+    return base.map(component => Math.abs(component)) as Vector3;
+};
+
+const normalizeVectorValue = (value: Vector3): Vector3 => {
+    const [x, y, z] = value;
+    const length = Math.hypot(x, y, z);
+    if (!Number.isFinite(length) || length === 0) {
+        return [x, y, z];
+    }
+    return [x / length, y / length, z / length];
+};
+
+const normalizeVectorObject = (vector: VectorObject): VectorObject => {
+    const normalized = normalizeVectorValue(vector.value);
+    if (
+        normalized[0] === vector.value[0] &&
+        normalized[1] === vector.value[1] &&
+        normalized[2] === vector.value[2]
+    ) {
+        return vector;
+    }
+    return { ...vector, value: normalized };
+};
 
 const PATH_RESOLUTION = 100; // Number of steps per unit of t
 const CONTACT_TOLERANCE = 0.07;
@@ -200,7 +231,9 @@ const sanitizeProfileData = (data: ProfileData | null): ProfileData | null => {
         matrixScalar: sanitizeNumber(data.matrixScalar, 1),
         matrixExponent: Math.max(1, Math.round(sanitizeNumber(data.matrixExponent, 1))),
         normalizeMatrix: ensureBoolean(data.normalizeMatrix, false),
-        linearEigenInterpolation: ensureBoolean(data.linearEigenInterpolation, false)
+        linearEigenInterpolation: ensureBoolean(data.linearEigenInterpolation, false),
+        dotSize: THREE.MathUtils.clamp(sanitizeNumber(data.dotSize, DOT_SIZE_DEFAULT), DOT_SIZE_MIN, DOT_SIZE_MAX),
+        autoNormalizeVectors: ensureBoolean(data.autoNormalizeVectors, false)
     };
 };
 const mapEigenvalues = (
@@ -236,11 +269,13 @@ function App() {
     // Core state
     const [matrixA, setMatrixA] = useState<Matrix3>(INITIAL_MATRIX);
     const [vectors, setVectors] = useState<VectorObject[]>(INITIAL_VECTORS);
+    const [autoNormalizeVectors, setAutoNormalizeVectors] = useState<boolean>(false);
     const [walls, setWalls] = useState<Wall[]>([]);
     const [t, setT] = useState<number>(0);
     const [tPrecision, setTPrecision] = useState<number>(0.01);
     const [error, setError] = useState<string | null>(null);
     const [dotMode, setDotMode] = useState<boolean>(false);
+    const [dotSize, setDotSize] = useState<number>(DOT_SIZE_DEFAULT);
     const [fadingPath, setFadingPath] = useState<boolean>(false);
     const [fadingPathLength, setFadingPathLength] = useState<number>(120);
     const [fadingPathStyle, setFadingPathStyle] = useState<FadingPathStyle>('smooth');
@@ -324,18 +359,22 @@ function App() {
         }
     }, [fadingPath, dynamicFadingPath]);
 
-    const randomizeVectors = useCallback(() => {
-        setVectors(prev => prev.map(vector => ({
-            ...vector,
-            value: randomVector()
-        })));
-    }, []);
+    const randomizeVectors = useCallback((nonNegative = false) => {
+        setVectors(prev => prev.map(vector => {
+            const randomized = randomVector(nonNegative);
+            const value = autoNormalizeVectors ? normalizeVectorValue(randomized) : randomized;
+            return {
+                ...vector,
+                value
+            };
+        }));
+    }, [autoNormalizeVectors]);
 
-    const applyRandomMatrix = useCallback(() => {
+    const applyRandomMatrix = useCallback((nonNegativeVectors = false) => {
         const randomMatrix = generateRandomGLPlusMatrix();
         setMatrixA(randomMatrix);
         setSelectedPresetName('Custom');
-        randomizeVectors();
+        randomizeVectors(nonNegativeVectors);
     }, [randomizeVectors]);
 
 
@@ -369,7 +408,7 @@ function App() {
                 const shouldRepeat = repeatAnimation || isExploring;
                 if (shouldRepeat) {
                     if (isExploring && direction === -1) {
-                        applyRandomMatrix();
+                        applyRandomMatrix(true);
                         setT(animationConfig.startT);
                     }
                     animationDirectionRef.current = direction === 1 ? -1 : 1;
@@ -408,23 +447,28 @@ function App() {
     const handleAddVector = useCallback(() => {
         setVectors(prev => {
             if (prev.length >= VECTOR_COLORS.length) return prev;
+            const randomized = randomVector();
             const newVector: VectorObject = {
                 id: Date.now(),
-                value: randomVector(),
+                value: autoNormalizeVectors ? normalizeVectorValue(randomized) : randomized,
                 visible: true,
                 color: VECTOR_COLORS[prev.length % VECTOR_COLORS.length]
             };
             return [...prev, newVector];
         });
-    }, []);
+    }, [autoNormalizeVectors]);
 
     const handleRemoveVector = useCallback((id: number) => {
         setVectors(prev => prev.filter(v => v.id !== id));
     }, []);
 
     const handleVectorChange = useCallback((id: number, newValue: Vector3) => {
-        setVectors(prev => prev.map(v => v.id === id ? { ...v, value: newValue } : v));
-    }, []);
+        setVectors(prev => prev.map(v => {
+            if (v.id !== id) return v;
+            const value = autoNormalizeVectors ? normalizeVectorValue(newValue) : newValue;
+            return { ...v, value };
+        }));
+    }, [autoNormalizeVectors]);
     
     const handleVectorColorChange = useCallback((id: number, newColor: string) => {
         setVectors(prev => prev.map(v => v.id === id ? { ...v, color: newColor } : v));
@@ -435,15 +479,14 @@ function App() {
     }, []);
 
     const handleNormalizeVectors = useCallback(() => {
-        setVectors(prev => prev.map(vector => {
-            const [x, y, z] = vector.value;
-            const length = Math.hypot(x, y, z);
-            if (!Number.isFinite(length) || length === 0) {
-                return vector;
-            }
-            const normalized: Vector3 = [x / length, y / length, z / length];
-            return { ...vector, value: normalized };
-        }));
+        setVectors(prev => prev.map(normalizeVectorObject));
+    }, []);
+
+    const handleAutoNormalizeToggle = useCallback((enabled: boolean) => {
+        setAutoNormalizeVectors(enabled);
+        if (enabled) {
+            setVectors(prev => prev.map(normalizeVectorObject));
+        }
     }, []);
 
     const handleAddWall = useCallback(() => {
@@ -482,7 +525,7 @@ function App() {
 
     const startExploration = useCallback(() => {
         stopAnimation();
-        applyRandomMatrix();
+        applyRandomMatrix(true);
         setT(animationConfig.startT);
         animationDirectionRef.current = 1;
         animationStartRef.current = null;
@@ -512,6 +555,12 @@ function App() {
         const baseValue = Number.isFinite(value) ? value : 1;
         const sanitized = Math.max(1, Math.round(baseValue));
         setMatrixExponent(sanitized);
+    }, []);
+
+    const handleDotSizeChange = useCallback((value: number) => {
+        const baseValue = Number.isFinite(value) ? value : DOT_SIZE_DEFAULT;
+        const clamped = THREE.MathUtils.clamp(baseValue, DOT_SIZE_MIN, DOT_SIZE_MAX);
+        setDotSize(clamped);
     }, []);
 
     const handleNormalizeToggle = useCallback((enabled: boolean) => {
@@ -565,19 +614,21 @@ function App() {
                 easing: animationConfig.easing
             },
             repeatAnimation,
-            activation: {
-                name: activation.name,
-                customFnStr: activation.customFnStr
-            },
-            selectedPresetName,
-            matrixScalar,
-            matrixExponent,
-            normalizeMatrix,
-            linearEigenInterpolation
-        };
-    }, [
-        matrixA,
-        vectors,
+        activation: {
+            name: activation.name,
+            customFnStr: activation.customFnStr
+        },
+        selectedPresetName,
+        matrixScalar,
+        matrixExponent,
+        normalizeMatrix,
+        linearEigenInterpolation,
+        dotSize,
+        autoNormalizeVectors
+    };
+}, [
+    matrixA,
+    vectors,
         walls,
         t,
         tPrecision,
@@ -594,13 +645,15 @@ function App() {
         animationConfig.easing,
         repeatAnimation,
         activation.name,
-        activation.customFnStr,
-        selectedPresetName,
-        matrixScalar,
-        matrixExponent,
-        normalizeMatrix,
-        linearEigenInterpolation
-    ]);
+    activation.customFnStr,
+    selectedPresetName,
+    matrixScalar,
+    matrixExponent,
+    normalizeMatrix,
+    linearEigenInterpolation,
+    dotSize,
+    autoNormalizeVectors
+]);
 
     const applyProfileData = useCallback((rawData: ProfileData | null) => {
         const data = sanitizeProfileData(rawData);
@@ -609,13 +662,15 @@ function App() {
         }
         stopAnimation();
         setMatrixA(data.matrixA);
-        setVectors(data.vectors);
+        setVectors(data.autoNormalizeVectors ? data.vectors.map(normalizeVectorObject) : data.vectors);
         setWalls(data.walls);
         handleMatrixScalarChange(data.matrixScalar);
         handleMatrixExponentChange(data.matrixExponent);
         setNormalizeMatrix(data.normalizeMatrix);
         setLinearEigenInterpolation(data.linearEigenInterpolation);
+        setAutoNormalizeVectors(data.autoNormalizeVectors);
         setDotMode(data.dotMode);
+        setDotSize(data.dotSize);
         setFadingPath(data.fadingPath);
         handleFadingPathLengthChange(data.fadingPathLength);
         setFadingPathStyle(data.fadingPathStyle);
@@ -1162,10 +1217,12 @@ function App() {
             <ControlsPanel
                 matrix={matrixA}
                 vectors={vectors}
+                autoNormalizeVectors={autoNormalizeVectors}
                 walls={walls}
                 t={t}
                 tPrecision={tPrecision}
                 dotMode={dotMode}
+                dotSize={dotSize}
                 fadingPath={fadingPath}
                 fadingPathLength={fadingPathLength}
                 fadingPathStyle={fadingPathStyle}
@@ -1193,11 +1250,13 @@ function App() {
                 onVectorColorChange={handleVectorColorChange}
                 onAddVector={handleAddVector}
                 onNormalizeVectors={handleNormalizeVectors}
+                onAutoNormalizeVectorsChange={handleAutoNormalizeToggle}
                 onRemoveVector={handleRemoveVector}
                 onToggleVisibility={handleToggleVectorVisibility}
                 onTChange={handleTChange}
                 onTPrecisionChange={setTPrecision}
                 onDotModeChange={setDotMode}
+                onDotSizeChange={handleDotSizeChange}
                 onFadingPathToggle={setFadingPath}
                 onFadingPathLengthChange={handleFadingPathLengthChange}
                 onFadingPathStyleChange={setFadingPathStyle}
@@ -1226,6 +1285,7 @@ function App() {
                         sceneData={sceneData}
                         walls={walls}
                         dotMode={dotMode}
+                        dotSize={dotSize}
                         fadingPath={fadingPath}
                         fadingPathLength={fadingPathLength}
                         fadingPathStyle={fadingPathStyle}

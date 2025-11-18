@@ -34,6 +34,8 @@ export interface ProfileData {
     matrixExponent: number;
     normalizeMatrix: boolean;
     linearEigenInterpolation: boolean;
+    dotSize: number;
+    autoNormalizeVectors: boolean;
 }
 
 export interface ProfileSummary {
