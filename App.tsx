@@ -233,7 +233,8 @@ const sanitizeProfileData = (data: ProfileData | null): ProfileData | null => {
         normalizeMatrix: ensureBoolean(data.normalizeMatrix, false),
         linearEigenInterpolation: ensureBoolean(data.linearEigenInterpolation, false),
         dotSize: THREE.MathUtils.clamp(sanitizeNumber(data.dotSize, DOT_SIZE_DEFAULT), DOT_SIZE_MIN, DOT_SIZE_MAX),
-        autoNormalizeVectors: ensureBoolean(data.autoNormalizeVectors, false)
+        autoNormalizeVectors: ensureBoolean(data.autoNormalizeVectors, false),
+        exploreRandomizeVectors: ensureBoolean(data.exploreRandomizeVectors, true)
     };
 };
 const mapEigenvalues = (
@@ -282,6 +283,7 @@ function App() {
     const [showStartMarkers, setShowStartMarkers] = useState<boolean>(true);
     const [showEndMarkers, setShowEndMarkers] = useState<boolean>(true);
     const [dynamicFadingPath, setDynamicFadingPath] = useState<boolean>(false);
+    const [exploreRandomizeVectors, setExploreRandomizeVectors] = useState<boolean>(true);
     const [selectedPresetName, setSelectedPresetName] = useState(PRESET_MATRICES[0].name);
     const [matrixScalar, setMatrixScalar] = useState<number>(1);
     const [matrixExponent, setMatrixExponent] = useState<number>(1);
@@ -372,11 +374,14 @@ function App() {
         }));
     }, [autoNormalizeVectors]);
 
-    const applyRandomMatrix = useCallback((nonNegativeVectors = false) => {
+    const applyRandomMatrix = useCallback((options?: { randomizeVectors?: boolean; nonNegativeVectors?: boolean }) => {
         const randomMatrix = generateRandomGLPlusMatrix();
         setMatrixA(randomMatrix);
         setSelectedPresetName('Custom');
-        randomizeVectors(nonNegativeVectors);
+        const shouldRandomizeVectors = options?.randomizeVectors ?? true;
+        if (shouldRandomizeVectors) {
+            randomizeVectors(options?.nonNegativeVectors ?? false);
+        }
     }, [randomizeVectors]);
 
 
@@ -410,7 +415,10 @@ function App() {
                 const shouldRepeat = repeatAnimation || isExploring;
                 if (shouldRepeat) {
                     if (isExploring && direction === -1) {
-                        applyRandomMatrix(true);
+                        applyRandomMatrix({
+                            randomizeVectors: exploreRandomizeVectors,
+                            nonNegativeVectors: true
+                        });
                         setT(animationConfig.startT);
                     }
                     animationDirectionRef.current = direction === 1 ? -1 : 1;
@@ -429,7 +437,7 @@ function App() {
                 cancelAnimationFrame(animationFrameRef.current);
             }
         };
-    }, [isPlaying, animationConfig, repeatAnimation, stopAnimation, isExploring, applyRandomMatrix]);
+    }, [isPlaying, animationConfig, repeatAnimation, stopAnimation, isExploring, applyRandomMatrix, exploreRandomizeVectors]);
 
 
     // --- Handlers ---
@@ -527,13 +535,16 @@ function App() {
 
     const startExploration = useCallback(() => {
         stopAnimation();
-        applyRandomMatrix(true);
+        applyRandomMatrix({
+            randomizeVectors: exploreRandomizeVectors,
+            nonNegativeVectors: true
+        });
         setT(animationConfig.startT);
         animationDirectionRef.current = 1;
         animationStartRef.current = null;
         setIsExploring(true);
         setIsPlaying(true);
-    }, [stopAnimation, applyRandomMatrix, animationConfig.startT]);
+    }, [stopAnimation, applyRandomMatrix, animationConfig.startT, exploreRandomizeVectors]);
 
     const handleExploreToggle = useCallback(() => {
         if (isExploring) {
@@ -609,6 +620,7 @@ function App() {
             showStartMarkers,
             showEndMarkers,
             dynamicFadingPath,
+            exploreRandomizeVectors,
             animationConfig: {
                 duration: animationConfig.duration,
                 startT: animationConfig.startT,
@@ -616,21 +628,21 @@ function App() {
                 easing: animationConfig.easing
             },
             repeatAnimation,
-        activation: {
-            name: activation.name,
-            customFnStr: activation.customFnStr
-        },
-        selectedPresetName,
-        matrixScalar,
-        matrixExponent,
-        normalizeMatrix,
-        linearEigenInterpolation,
-        dotSize,
-        autoNormalizeVectors
-    };
-}, [
-    matrixA,
-    vectors,
+            activation: {
+                name: activation.name,
+                customFnStr: activation.customFnStr
+            },
+            selectedPresetName,
+            matrixScalar,
+            matrixExponent,
+            normalizeMatrix,
+            linearEigenInterpolation,
+            dotSize,
+            autoNormalizeVectors
+        };
+    }, [
+        matrixA,
+        vectors,
         walls,
         t,
         tPrecision,
@@ -641,21 +653,22 @@ function App() {
         showStartMarkers,
         showEndMarkers,
         dynamicFadingPath,
+        exploreRandomizeVectors,
         animationConfig.duration,
         animationConfig.startT,
         animationConfig.endT,
         animationConfig.easing,
         repeatAnimation,
         activation.name,
-    activation.customFnStr,
-    selectedPresetName,
-    matrixScalar,
-    matrixExponent,
-    normalizeMatrix,
-    linearEigenInterpolation,
-    dotSize,
-    autoNormalizeVectors
-]);
+        activation.customFnStr,
+        selectedPresetName,
+        matrixScalar,
+        matrixExponent,
+        normalizeMatrix,
+        linearEigenInterpolation,
+        dotSize,
+        autoNormalizeVectors
+    ]);
 
     const applyProfileData = useCallback((rawData: ProfileData | null) => {
         const data = sanitizeProfileData(rawData);
@@ -679,6 +692,7 @@ function App() {
         setShowStartMarkers(data.showStartMarkers);
         setShowEndMarkers(data.showEndMarkers);
         setDynamicFadingPath(data.dynamicFadingPath);
+        setExploreRandomizeVectors(data.exploreRandomizeVectors);
         setAnimationConfig({
             duration: data.animationConfig.duration,
             startT: data.animationConfig.startT,
@@ -1234,6 +1248,7 @@ function App() {
                     dynamicFadingPath={dynamicFadingPath}
                     isPlaying={isPlaying}
                     isExploring={isExploring}
+                    exploreRandomizeVectors={exploreRandomizeVectors}
                     animationConfig={animationConfig}
                     repeatAnimation={repeatAnimation}
                     activationConfig={activation}
@@ -1269,6 +1284,7 @@ function App() {
                     onResetTime={resetTime}
                     onPlayPause={handlePlayPause}
                     onExploreToggle={handleExploreToggle}
+                    onExploreRandomizeVectorsChange={setExploreRandomizeVectors}
                     onAnimationConfigChange={setAnimationConfig}
                     onRepeatToggle={handleRepeatToggle}
                     onActivationConfigChange={setActivation}

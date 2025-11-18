@@ -36,6 +36,7 @@ export interface ProfileData {
     linearEigenInterpolation: boolean;
     dotSize: number;
     autoNormalizeVectors: boolean;
+    exploreRandomizeVectors: boolean;
 }
 
 export interface ProfileSummary {

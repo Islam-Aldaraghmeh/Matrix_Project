@@ -37,6 +37,7 @@ interface ControlsPanelProps {
     dynamicFadingPath: boolean;
     isPlaying: boolean;
     isExploring: boolean;
+    exploreRandomizeVectors: boolean;
     animationConfig: AnimationConfig;
     repeatAnimation: boolean;
     activationConfig: ActivationConfig;
@@ -72,6 +73,7 @@ interface ControlsPanelProps {
     onResetTime: () => void;
     onPlayPause: () => void;
     onExploreToggle: () => void;
+    onExploreRandomizeVectorsChange: (enabled: boolean) => void;
     onAnimationConfigChange: (config: AnimationConfig) => void;
     onRepeatToggle: (enabled: boolean) => void;
     onActivationConfigChange: (config: ActivationConfig) => void;
@@ -187,6 +189,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         dynamicFadingPath,
         isPlaying,
         isExploring,
+        exploreRandomizeVectors,
         animationConfig,
         repeatAnimation,
         activationConfig,
@@ -222,6 +225,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onResetTime,
         onPlayPause,
         onExploreToggle,
+        onExploreRandomizeVectorsChange,
         onAnimationConfigChange,
         onRepeatToggle,
         onActivationConfigChange,
@@ -808,6 +812,21 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                         className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${isExploring ? 'bg-amber-400 text-gray-900 shadow-lg shadow-amber-500/30' : 'bg-gray-700 text-cyan-300 hover:bg-gray-600'}`}
                                     >
                                         {isExploring ? 'Stop Explore' : 'Explore'}
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-800/60 rounded-lg p-3 gap-4">
+                                    <div>
+                                        <p className="text-sm font-semibold text-gray-200">Randomize vectors while exploring</p>
+                                        <p className="text-xs text-gray-400 mt-1">Disable to keep current inputs as matrices shuffle.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={exploreRandomizeVectors}
+                                        onClick={() => onExploreRandomizeVectorsChange(!exploreRandomizeVectors)}
+                                        className={`${exploreRandomizeVectors ? 'bg-cyan-500' : 'bg-gray-600'} relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-cyan-500`}
+                                    >
+                                        <span className={`${exploreRandomizeVectors ? 'translate-x-6' : 'translate-x-1'} inline-block w-4 h-4 transform bg-white rounded-full transition-transform`} />
                                     </button>
                                 </div>
                             </div>
