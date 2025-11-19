@@ -349,8 +349,8 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
              <div className="p-6 pb-0">
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-cyan-400 mb-1">Matrix Transformation</h1>
-                        <p className="text-lg text-gray-300 mb-4 font-mono">f(A<sup>t</sup>v) Visualizer</p>
+                        <h1 className="text-2xl font-bold text-cyan-400 mb-1">Matrix Path Visualizer</h1>
+                        <p className="text-sm text-gray-400 italic mb-4">Made by Islam Aldaraghmeh</p>
                     </div>
                     {onCollapse && (
                         <button
