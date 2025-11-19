@@ -1,4 +1,5 @@
 import type { Matrix3, Vector3 } from '../types';
+import { validateExpLogMatrix } from './mathUtils';
 
 const randomMatrixEntry = () => parseFloat((Math.random() * 4 - 2).toFixed(2));
 
@@ -23,18 +24,38 @@ const flipColumnSign = (matrix: Matrix3, columnIndex = 0): Matrix3 => {
     return next;
 };
 
-export const generateRandomGLPlusMatrix = (): Matrix3 => {
+interface RandomMatrixOptions {
+    requirePositiveEigenvalues?: boolean;
+}
+
+const buildPositiveDiagonalMatrix = (): Matrix3 => ([
+    [1 + Math.random(), 0, 0],
+    [0, 1 + Math.random(), 0],
+    [0, 0, 1 + Math.random()]
+]);
+
+export const generateRandomGLPlusMatrix = (options?: RandomMatrixOptions): Matrix3 => {
     const MAX_ATTEMPTS = 30;
+    const requirePositiveEigenvalues = Boolean(options?.requirePositiveEigenvalues);
+
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const candidate = buildRandomCandidate();
         const det = determinant3x3(candidate);
         if (Math.abs(det) < 1e-5) {
             continue;
         }
-        if (det > 0) {
-            return candidate;
+        const oriented = det > 0 ? candidate : flipColumnSign(candidate);
+        if (!requirePositiveEigenvalues) {
+            return oriented;
         }
-        return flipColumnSign(candidate);
+        const validation = validateExpLogMatrix(oriented);
+        if (validation.valid) {
+            return oriented;
+        }
+    }
+
+    if (requirePositiveEigenvalues) {
+        return buildPositiveDiagonalMatrix();
     }
 
     const fallback = buildRandomCandidate();

@@ -1,10 +1,59 @@
 import * as math from 'mathjs';
+import type { MathType } from 'mathjs';
 import type { Matrix3, Vector3 } from '../types';
 import type { ActivationFunction } from './activationFunctions';
 
 const EPSILON = 1e-9;
 const SMALL_ANGLE = 1e-7;
 const IMAGINARY_TOLERANCE = 1e-6;
+
+const isComplexLike = (value: unknown): value is { re: number; im: number } => {
+    return typeof value === 'object' && value !== null &&
+        typeof (value as { re?: unknown }).re === 'number' &&
+        typeof (value as { im?: unknown }).im === 'number';
+};
+
+const hasToNumber = (value: unknown): value is { toNumber: () => number } => {
+    return typeof value === 'object' && value !== null &&
+        typeof (value as { toNumber?: unknown }).toNumber === 'function';
+};
+
+const extractEigenvalueParts = (value: MathType): { real: number; imag: number } => {
+    if (typeof value === 'number') {
+        return { real: value, imag: 0 };
+    }
+    if (isComplexLike(value)) {
+        return { real: value.re, imag: value.im };
+    }
+    if (hasToNumber(value)) {
+        const real = value.toNumber();
+        return { real, imag: 0 };
+    }
+    const parsed = Number(value as number);
+    return {
+        real: Number.isFinite(parsed) ? parsed : NaN,
+        imag: 0
+    };
+};
+
+const isExpLogEigenvalueAllowed = (value: MathType): boolean => {
+    const { real, imag } = extractEigenvalueParts(value);
+    if (!Number.isFinite(real) || !Number.isFinite(imag)) {
+        return false;
+    }
+    if (Math.abs(imag) > IMAGINARY_TOLERANCE) {
+        return true;
+    }
+    return real > EPSILON;
+};
+
+const eigenvaluesAreExpLogSafe = (values: MathType[]): boolean =>
+    values.every(isExpLogEigenvalueAllowed);
+
+export type ExpLogValidationResult = {
+    valid: boolean;
+    reason: string | null;
+};
 
 const identityMatrix = (): Matrix3 => [
     [1, 0, 0],
@@ -453,6 +502,10 @@ const createExpLogEvaluator = (A: Matrix3): MatrixEvaluator | null => {
             console.warn('Exp-log backend requires eigenvalues with non-zero magnitude.');
             return null;
         }
+        if (!eigenvaluesAreExpLogSafe(eigenValues as MathType[])) {
+            console.warn('Exp-log backend requires strictly positive real eigenvalues or complex conjugate pairs.');
+            return null;
+        }
 
         const logDiagValues = eigenValues.map(value => math.log(value as math.MathType));
         const logDiag = math.diag(logDiagValues);
@@ -553,3 +606,29 @@ export function calculateAtv(
     if (!raw) return null;
     return raw.map(activationFn) as Vector3;
 }
+
+export const validateExpLogMatrix = (matrix: Matrix3): ExpLogValidationResult => {
+    try {
+        const eigs = math.eigs(math.matrix(matrix));
+        if (!eigs.values) {
+            return {
+                valid: false,
+                reason: 'exp(t ln A) requires computable eigenvalues.'
+            };
+        }
+        const eigenValues = math.matrix(eigs.values).toArray() as MathType[];
+        if (!eigenvaluesAreExpLogSafe(eigenValues)) {
+            return {
+                valid: false,
+                reason: 'exp(t ln A) requires strictly positive real eigenvalues (complex conjugate pairs are allowed).'
+            };
+        }
+        return { valid: true, reason: null };
+    } catch (error) {
+        console.warn('Exp-log validation error:', error);
+        return {
+            valid: false,
+            reason: 'exp(t ln A) requires positive real eigenvalues or complex conjugate pairs.'
+        };
+    }
+};

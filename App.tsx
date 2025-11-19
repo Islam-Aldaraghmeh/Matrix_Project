@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import Scene from './components/Scene';
 import ControlsPanel from './components/ControlsPanel';
 import InfoPanel from './components/InfoPanel';
-import { createMatrixEvaluator, multiplyMatrixVector } from './utils/mathUtils';
-import type { MatrixBackend } from './utils/mathUtils';
+import { createMatrixEvaluator, multiplyMatrixVector, validateExpLogMatrix } from './utils/mathUtils';
+import type { ExpLogValidationResult, MatrixBackend } from './utils/mathUtils';
 import { easingFunctions } from './utils/easing';
 import { activationFunctionMap, parseCustomActivation } from './utils/activationFunctions';
 import { generateRandomGLPlusMatrix } from './utils/randomMatrix';
@@ -379,14 +379,16 @@ function App() {
     }, [autoNormalizeVectors]);
 
     const applyRandomMatrix = useCallback((options?: { randomizeVectors?: boolean; nonNegativeVectors?: boolean }) => {
-        const randomMatrix = generateRandomGLPlusMatrix();
+        const randomMatrix = generateRandomGLPlusMatrix({
+            requirePositiveEigenvalues: matrixBackend === 'exp-log'
+        });
         setMatrixA(randomMatrix);
         setSelectedPresetName('Custom');
         const shouldRandomizeVectors = options?.randomizeVectors ?? true;
         if (shouldRandomizeVectors) {
             randomizeVectors(options?.nonNegativeVectors ?? false);
         }
-    }, [randomizeVectors]);
+    }, [randomizeVectors, matrixBackend]);
 
 
     // Animation Loop
@@ -887,10 +889,20 @@ function App() {
         setNormalizationWarning(null);
     }, [matrixA, matrixScalar, matrixExponent]);
 
+    const expLogCompatibility = useMemo<ExpLogValidationResult>(() => {
+        if (matrixBackend !== 'exp-log' || !matrixPreparation.matrix) {
+            return { valid: true, reason: null };
+        }
+        return validateExpLogMatrix(matrixPreparation.matrix);
+    }, [matrixBackend, matrixPreparation.matrix]);
+
     const matrixEvaluator = useMemo(() => {
         if (!matrixPreparation.matrix) return null;
+        if (matrixBackend === 'exp-log' && !expLogCompatibility.valid) {
+            return null;
+        }
         return createMatrixEvaluator(matrixPreparation.matrix, matrixBackend);
-    }, [matrixPreparation.matrix, matrixBackend]);
+    }, [matrixPreparation.matrix, matrixBackend, expLogCompatibility.valid]);
 
     const samplingConfig = useMemo(() => {
         const range = animationConfig.endT - animationConfig.startT;
@@ -927,6 +939,13 @@ function App() {
 
         if (activation.error) {
             return { transformations: null as TransformationsMap | null, error: `Activation Function Error: ${activation.error}` };
+        }
+
+        if (!expLogCompatibility.valid) {
+            return {
+                transformations: null as TransformationsMap | null,
+                error: expLogCompatibility.reason ?? 'exp(t ln A) requires strictly positive real eigenvalues (complex conjugate pairs are allowed).'
+            };
         }
 
         if (!matrixEvaluator) {
@@ -978,7 +997,7 @@ function App() {
         }
 
         return { transformations, error: null as string | null };
-    }, [matrixPreparation, vectors, activation.currentFn, activation.error, matrixEvaluator, matrixSamples, samplingConfig.range]);
+    }, [matrixPreparation, vectors, activation.currentFn, activation.error, matrixEvaluator, matrixSamples, samplingConfig.range, expLogCompatibility]);
     const vectorTransformations = vectorTransformationsResult.transformations;
 
 

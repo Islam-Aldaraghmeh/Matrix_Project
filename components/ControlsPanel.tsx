@@ -292,7 +292,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     };
 
     const handleRandomMatrix = () => {
-        onMatrixChange(generateRandomGLPlusMatrix());
+        onMatrixChange(generateRandomGLPlusMatrix({
+            requirePositiveEigenvalues: matrixBackend === 'exp-log'
+        }));
     };
 
     const handlePrecisionChange = (sliderValue: number) => {
