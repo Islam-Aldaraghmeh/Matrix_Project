@@ -89,6 +89,7 @@ interface ControlsPanelProps {
     onProfileLoad: (name: string) => ProfileOperationResult;
     onProfileDelete: (name: string) => ProfileOperationResult;
     error: string | null;
+    backendError: string | null;
     onCollapse?: () => void;
 }
 
@@ -243,6 +244,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onProfileLoad,
         onProfileDelete,
         error,
+        backendError,
         onCollapse
     } = props;
     
@@ -761,6 +763,9 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                         );
                                     })}
                                 </div>
+                                {backendError && (
+                                    <p className="text-xs text-red-400 mt-2">{backendError}</p>
+                                )}
                             </div>
                         </div>
                         

@@ -278,6 +278,7 @@ function App() {
     const [t, setT] = useState<number>(0);
     const [tPrecision, setTPrecision] = useState<number>(0.01);
     const [error, setError] = useState<string | null>(null);
+    const [backendError, setBackendError] = useState<string | null>(null);
     const [dotMode, setDotMode] = useState<boolean>(false);
     const [dotSize, setDotSize] = useState<number>(DOT_SIZE_DEFAULT);
     const [fadingPath, setFadingPath] = useState<boolean>(false);
@@ -889,12 +890,32 @@ function App() {
         setNormalizationWarning(null);
     }, [matrixA, matrixScalar, matrixExponent]);
 
+    useEffect(() => {
+        setBackendError(null);
+    }, [matrixPreparation.matrix]);
+
     const expLogCompatibility = useMemo<ExpLogValidationResult>(() => {
         if (matrixBackend !== 'exp-log' || !matrixPreparation.matrix) {
             return { valid: true, reason: null };
         }
         return validateExpLogMatrix(matrixPreparation.matrix);
     }, [matrixBackend, matrixPreparation.matrix]);
+
+    const handleMatrixBackendChange = useCallback((backend: MatrixBackend) => {
+        if (backend === 'exp-log') {
+            if (!matrixPreparation.matrix) {
+                setBackendError('Provide a valid matrix before using exp(t ln A).');
+                return;
+            }
+            const validation = validateExpLogMatrix(matrixPreparation.matrix);
+            if (!validation.valid) {
+                setBackendError(validation.reason ?? 'exp(t ln A) requires strictly positive real eigenvalues or complex conjugate pairs.');
+                return;
+            }
+        }
+        setBackendError(null);
+        setMatrixBackend(backend);
+    }, [matrixPreparation.matrix]);
 
     const matrixEvaluator = useMemo(() => {
         if (!matrixPreparation.matrix) return null;
@@ -1244,14 +1265,16 @@ function App() {
     }, [matrixEvaluator, t, firstVisibleVector, linearEigenInterpolation]);
 
     useEffect(() => {
-        if (vectorTransformationsResult.error) {
+        if (backendError) {
+            setError(backendError);
+        } else if (vectorTransformationsResult.error) {
             setError(vectorTransformationsResult.error);
         } else if (normalizationWarning) {
             setError(normalizationWarning);
         } else {
             setError(null);
         }
-    }, [vectorTransformationsResult.error, normalizationWarning]);
+    }, [backendError, vectorTransformationsResult.error, normalizationWarning]);
 
 
     return (
@@ -1315,7 +1338,7 @@ function App() {
                     onAnimationConfigChange={setAnimationConfig}
                     onRepeatToggle={handleRepeatToggle}
                     onActivationConfigChange={setActivation}
-                    onMatrixBackendChange={setMatrixBackend}
+                    onMatrixBackendChange={handleMatrixBackendChange}
                     onAddWall={handleAddWall}
                     onUpdateWall={handleUpdateWall}
                     onRemoveWall={handleRemoveWall}
@@ -1325,6 +1348,7 @@ function App() {
                     onProfileLoad={handleProfileLoad}
                     onProfileDelete={handleProfileDelete}
                     error={error}
+                    backendError={backendError}
                     onCollapse={() => setControlsPanelVisible(false)}
                 />
             )}
