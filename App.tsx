@@ -1271,7 +1271,7 @@ function App() {
                 });
 
                 const entryColor = compareBackends ? viz.color : vector.color;
-                const showMarkers = !compareBackends || viz.backend === matrixBackend;
+                const showMarkers = true;
 
                 entries.push({
                     id: `${viz.backend}-${vector.id}`,
