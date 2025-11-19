@@ -48,6 +48,7 @@ interface ControlsPanelProps {
     normalizeMatrix: boolean;
     linearEigenInterpolation: boolean;
     matrixBackend: MatrixBackend;
+    compareBackends: boolean;
     normalizationWarning: string | null;
     onMatrixChange: (matrix: Matrix3) => void;
     onPresetSelect: (name: string) => void;
@@ -80,6 +81,7 @@ interface ControlsPanelProps {
     onAnimationConfigChange: (config: AnimationConfig) => void;
     onRepeatToggle: (enabled: boolean) => void;
     onActivationConfigChange: (config: ActivationConfig) => void;
+    onCompareBackendsChange: (enabled: boolean) => void;
     onAddWall: () => void;
     onUpdateWall: (id: number, updates: Partial<Wall>) => void;
     onRemoveWall: (id: number) => void;
@@ -203,6 +205,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         normalizeMatrix,
         linearEigenInterpolation,
         matrixBackend,
+        compareBackends,
         normalizationWarning,
         onMatrixChange,
         onPresetSelect,
@@ -235,6 +238,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onAnimationConfigChange,
         onRepeatToggle,
         onActivationConfigChange,
+        onCompareBackendsChange,
         onAddWall,
         onUpdateWall,
         onRemoveWall,
@@ -295,7 +299,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
 
     const handleRandomMatrix = () => {
         onMatrixChange(generateRandomGLPlusMatrix({
-            requirePositiveEigenvalues: matrixBackend === 'exp-log'
+            requirePositiveEigenvalues: matrixBackend === 'exp-log' || compareBackends
         }));
     };
 
@@ -766,6 +770,21 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                 {backendError && (
                                     <p className="text-xs text-red-400 mt-2">{backendError}</p>
                                 )}
+                                <div className="mt-3 flex items-center justify-between bg-gray-800/70 rounded-lg p-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-gray-200">Compare Backends</p>
+                                        <p className="text-xs text-gray-400 mt-1">Plot both KAN and exp(t ln A) paths together.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={compareBackends}
+                                        onClick={() => onCompareBackendsChange(!compareBackends)}
+                                        className={`${compareBackends ? 'bg-cyan-500' : 'bg-gray-700'} relative inline-flex items-center h-6 rounded-full w-12 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500`}
+                                    >
+                                        <span className={`${compareBackends ? 'translate-x-6' : 'translate-x-1'} inline-block w-4 h-4 transform bg-white rounded-full transition-transform`} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         

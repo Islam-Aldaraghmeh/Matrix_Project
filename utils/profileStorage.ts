@@ -39,6 +39,7 @@ export interface ProfileData {
     autoNormalizeVectors: boolean;
     exploreRandomizeVectors: boolean;
     matrixBackend: MatrixBackend;
+    compareBackends?: boolean;
 }
 
 export interface ProfileSummary {

@@ -6,9 +6,10 @@ import VectorArrow from './VectorArrow';
 import TracedPath from './TracedPath';
 import VectorDot from './VectorDot';
 import type { Wall, FadingPathStyle } from '../types';
+import type { MatrixBackend } from '../utils/mathUtils';
 
 interface SceneObject {
-    id: number;
+    id: string;
     color: string;
     initialVector: THREE.Vector3;
     finalVector: THREE.Vector3 | null;
@@ -21,6 +22,9 @@ interface SceneObject {
         point: THREE.Vector3;
         normalDirection: 1 | -1;
     }[];
+    backend?: MatrixBackend;
+    sourceVectorId?: number;
+    showMarkers?: boolean;
 }
 
 interface SceneProps {
@@ -172,43 +176,35 @@ const Scene: React.FC<SceneProps> = React.memo(({
                 );
             })}
 
-            {memoizedSceneData.map(({ id, color, initialVector, finalVector, interpolatedVector, path }) => (
-                <React.Fragment key={id}>
-                    {dotMode ? (
-                        <>
-                            {/* Initial Vector (v) */}
-                            {showStartMarkers && <VectorDot position={initialVector} color={color} size={dotSize} />}
-
-                            {/* Final Vector (A*v) */}
-                            {showEndMarkers && finalVector && <VectorDot position={finalVector} color={color} opacity={0.5} size={dotSize} />}
-                            
-                            {/* Interpolated Vector (A^t*v) */}
-                            {interpolatedVector && <VectorDot position={interpolatedVector} color="#fde047" size={dotSize} />}
-                        </>
-                    ) : (
-                        <>
-                             {/* Initial Vector (v) */}
-                            {showStartMarkers && <VectorArrow direction={initialVector} color={color} />}
-
-                            {/* Final Vector (A*v) */}
-                            {showEndMarkers && finalVector && <VectorArrow direction={finalVector} color={color} opacity={0.5} />}
-                            
-                            {/* Interpolated Vector (A^t*v) */}
-                            {interpolatedVector && <VectorArrow direction={interpolatedVector} color="#fde047" />}
-                        </>
-                    )}
-                    
-                    {/* Traced Path */}
-                    <TracedPath
-                        points={path}
-                        color={color}
-                        fading={fadingPath}
-                        maxLength={fadingPathLength}
-                        style={fadingPathStyle}
-                        dynamic={dynamicFadingPath}
-                    />
-                </React.Fragment>
-            ))}
+            {memoizedSceneData.map(({ id, color, initialVector, finalVector, interpolatedVector, path, showMarkers: entryMarkers }) => {
+                const markersEnabled = entryMarkers ?? true;
+                return (
+                    <React.Fragment key={id}>
+                        {dotMode ? (
+                            <>
+                                {markersEnabled && showStartMarkers && <VectorDot position={initialVector} color={color} size={dotSize} />}
+                                {markersEnabled && showEndMarkers && finalVector && <VectorDot position={finalVector} color={color} opacity={0.5} size={dotSize} />}
+                                {markersEnabled && interpolatedVector && <VectorDot position={interpolatedVector} color="#fde047" size={dotSize} />}
+                            </>
+                        ) : (
+                            <>
+                                {markersEnabled && showStartMarkers && <VectorArrow direction={initialVector} color={color} />}
+                                {markersEnabled && showEndMarkers && finalVector && <VectorArrow direction={finalVector} color={color} opacity={0.5} />}
+                                {markersEnabled && interpolatedVector && <VectorArrow direction={interpolatedVector} color="#fde047" />}
+                            </>
+                        )}
+                        
+                        <TracedPath
+                            points={path}
+                            color={color}
+                            fading={fadingPath}
+                            maxLength={fadingPathLength}
+                            style={fadingPathStyle}
+                            dynamic={dynamicFadingPath}
+                        />
+                    </React.Fragment>
+                );
+            })}
 
             <OrbitControls />
         </Canvas>

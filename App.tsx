@@ -56,6 +56,16 @@ const DOT_SIZE_DEFAULT = 0.08;
 const DOT_SIZE_MIN = 0.02;
 const DOT_SIZE_MAX = 0.2;
 
+const BACKEND_LABELS: Record<MatrixBackend, string> = {
+    kan: 'KAN Path',
+    'exp-log': 'exp(t ln A) Path'
+};
+
+const BACKEND_COLORS: Record<MatrixBackend, string> = {
+    kan: '#22d3ee',
+    'exp-log': '#f97316'
+};
+
 const randomVector = (nonNegative = false): Vector3 => {
     const base: Vector3 = [
         Math.random() * 4 - 2,
@@ -102,6 +112,13 @@ interface WallContact {
 
 type Eigenvalue = { re: number; im: number };
 type TrailSample = { position: THREE.Vector3; timestamp: number; index: number };
+
+interface BackendVisualization {
+    backend: MatrixBackend;
+    label: string;
+    color: string;
+    transformations: TransformationsMap;
+}
 
 const sanitizeNumber = (value: unknown, fallback: number): number => {
     const parsed = typeof value === 'number' ? value : Number(value);
@@ -237,7 +254,8 @@ const sanitizeProfileData = (data: ProfileData | null): ProfileData | null => {
         dotSize: THREE.MathUtils.clamp(sanitizeNumber(data.dotSize, DOT_SIZE_DEFAULT), DOT_SIZE_MIN, DOT_SIZE_MAX),
         autoNormalizeVectors: ensureBoolean(data.autoNormalizeVectors, false),
         exploreRandomizeVectors: ensureBoolean(data.exploreRandomizeVectors, true),
-        matrixBackend: sanitizeBackend(data.matrixBackend)
+        matrixBackend: sanitizeBackend(data.matrixBackend),
+        compareBackends: ensureBoolean(data.compareBackends, false)
     };
 };
 const mapEigenvalues = (
@@ -289,6 +307,7 @@ function App() {
     const [dynamicFadingPath, setDynamicFadingPath] = useState<boolean>(false);
     const [exploreRandomizeVectors, setExploreRandomizeVectors] = useState<boolean>(true);
     const [matrixBackend, setMatrixBackend] = useState<MatrixBackend>('kan');
+    const [compareBackends, setCompareBackends] = useState<boolean>(false);
     const [selectedPresetName, setSelectedPresetName] = useState(PRESET_MATRICES[0].name);
     const [matrixScalar, setMatrixScalar] = useState<number>(1);
     const [matrixExponent, setMatrixExponent] = useState<number>(1);
@@ -314,8 +333,8 @@ function App() {
     const animationStartRef = useRef<number | null>(null);
     const animationDirectionRef = useRef<1 | -1>(1);
     const previousTRef = useRef<number>(t);
-    const dynamicTrailPointsRef = useRef<Map<number, TrailSample[]>>(new Map());
-    const previousSampleIndexRef = useRef<Map<number, number>>(new Map());
+    const dynamicTrailPointsRef = useRef<Map<string, TrailSample[]>>(new Map());
+    const previousSampleIndexRef = useRef<Map<string, number>>(new Map());
 
     // Activation function state
     const [activation, setActivation] = useState<{
@@ -381,7 +400,7 @@ function App() {
 
     const applyRandomMatrix = useCallback((options?: { randomizeVectors?: boolean; nonNegativeVectors?: boolean }) => {
         const randomMatrix = generateRandomGLPlusMatrix({
-            requirePositiveEigenvalues: matrixBackend === 'exp-log'
+            requirePositiveEigenvalues: matrixBackend === 'exp-log' || compareBackends
         });
         setMatrixA(randomMatrix);
         setSelectedPresetName('Custom');
@@ -389,7 +408,7 @@ function App() {
         if (shouldRandomizeVectors) {
             randomizeVectors(options?.nonNegativeVectors ?? false);
         }
-    }, [randomizeVectors, matrixBackend]);
+    }, [randomizeVectors, matrixBackend, compareBackends]);
 
 
     // Animation Loop
@@ -646,7 +665,8 @@ function App() {
             linearEigenInterpolation,
             dotSize,
             autoNormalizeVectors,
-            matrixBackend
+            matrixBackend,
+            compareBackends
         };
     }, [
         matrixA,
@@ -676,7 +696,8 @@ function App() {
         linearEigenInterpolation,
         dotSize,
         autoNormalizeVectors,
-        matrixBackend
+        matrixBackend,
+        compareBackends
     ]);
 
     const applyProfileData = useCallback((rawData: ProfileData | null) => {
@@ -703,6 +724,7 @@ function App() {
         setDynamicFadingPath(data.dynamicFadingPath);
         setExploreRandomizeVectors(data.exploreRandomizeVectors);
         setMatrixBackend(data.matrixBackend);
+        setCompareBackends(Boolean(data.compareBackends));
         setAnimationConfig({
             duration: data.animationConfig.duration,
             startT: data.animationConfig.startT,
@@ -895,35 +917,48 @@ function App() {
     }, [matrixPreparation.matrix]);
 
     const expLogCompatibility = useMemo<ExpLogValidationResult>(() => {
-        if (matrixBackend !== 'exp-log' || !matrixPreparation.matrix) {
-            return { valid: true, reason: null };
+        if (!matrixPreparation.matrix) {
+            return { valid: false, reason: 'Provide a valid matrix to evaluate exp(t ln A).' };
         }
         return validateExpLogMatrix(matrixPreparation.matrix);
-    }, [matrixBackend, matrixPreparation.matrix]);
+    }, [matrixPreparation.matrix]);
 
     const handleMatrixBackendChange = useCallback((backend: MatrixBackend) => {
         if (backend === 'exp-log') {
-            if (!matrixPreparation.matrix) {
-                setBackendError('Provide a valid matrix before using exp(t ln A).');
-                return;
-            }
-            const validation = validateExpLogMatrix(matrixPreparation.matrix);
-            if (!validation.valid) {
-                setBackendError(validation.reason ?? 'exp(t ln A) requires strictly positive real eigenvalues or complex conjugate pairs.');
+            if (!expLogCompatibility.valid) {
+                setBackendError(expLogCompatibility.reason ?? 'exp(t ln A) requires strictly positive real eigenvalues or complex conjugate pairs.');
                 return;
             }
         }
         setBackendError(null);
         setMatrixBackend(backend);
+    }, [expLogCompatibility]);
+
+    const handleCompareBackendsToggle = useCallback((enabled: boolean) => {
+        if (enabled && !expLogCompatibility.valid) {
+            setBackendError(expLogCompatibility.reason ?? 'exp(t ln A) requires strictly positive real eigenvalues or complex conjugate pairs.');
+            return;
+        }
+        setBackendError(null);
+        setCompareBackends(enabled);
+    }, [expLogCompatibility]);
+
+    const kanEvaluator = useMemo(() => {
+        if (!matrixPreparation.matrix) return null;
+        return createMatrixEvaluator(matrixPreparation.matrix, 'kan');
     }, [matrixPreparation.matrix]);
 
+    const expLogEvaluatorInstance = useMemo(() => {
+        if (!matrixPreparation.matrix || !expLogCompatibility.valid) return null;
+        return createMatrixEvaluator(matrixPreparation.matrix, 'exp-log');
+    }, [matrixPreparation.matrix, expLogCompatibility.valid]);
+
     const matrixEvaluator = useMemo(() => {
-        if (!matrixPreparation.matrix) return null;
-        if (matrixBackend === 'exp-log' && !expLogCompatibility.valid) {
-            return null;
+        if (matrixBackend === 'exp-log') {
+            return expLogEvaluatorInstance;
         }
-        return createMatrixEvaluator(matrixPreparation.matrix, matrixBackend);
-    }, [matrixPreparation.matrix, matrixBackend, expLogCompatibility.valid]);
+        return kanEvaluator;
+    }, [matrixBackend, kanEvaluator, expLogEvaluatorInstance]);
 
     const samplingConfig = useMemo(() => {
         const range = animationConfig.endT - animationConfig.startT;
@@ -954,82 +989,117 @@ function App() {
     // --- Memoized Calculations ---
 
     const vectorTransformationsResult = useMemo(() => {
-        if (matrixPreparation.error) {
-            return { transformations: null as TransformationsMap | null, error: matrixPreparation.error };
-        }
+        const baseError = matrixPreparation.error
+            ?? (activation.error ? `Activation Function Error: ${activation.error}` : null);
 
-        if (activation.error) {
-            return { transformations: null as TransformationsMap | null, error: `Activation Function Error: ${activation.error}` };
-        }
-
-        if (!expLogCompatibility.valid) {
-            return {
-                transformations: null as TransformationsMap | null,
-                error: expLogCompatibility.reason ?? 'exp(t ln A) requires strictly positive real eigenvalues (complex conjugate pairs are allowed).'
-            };
-        }
-
-        if (!matrixEvaluator) {
-            return { transformations: null as TransformationsMap | null, error: 'Matrix unavailable.' };
+        if (baseError) {
+            return { visualizations: [] as BackendVisualization[], error: baseError };
         }
 
         const range = samplingConfig.range;
         if (range <= 0) {
-            return { transformations: null as TransformationsMap | null, error: "Animation End Time must be greater than Start Time." };
+            return { visualizations: [] as BackendVisualization[], error: "Animation End Time must be greater than Start Time." };
         }
 
-        if (!matrixSamples) {
-            return { transformations: null as TransformationsMap | null, error: 'Matrix generation failed.' };
+        const times = samplingConfig.times;
+        if (times.length === 0) {
+            return { visualizations: [] as BackendVisualization[], error: 'No sampling points available.' };
         }
 
-        if (matrixSamples.some(sample => !sample)) {
-            return { transformations: null as TransformationsMap | null, error: 'Matrix generation failed at specific time samples.' };
-        }
+        const evaluateBackends: MatrixBackend[] = compareBackends ? ['kan', 'exp-log'] : [matrixBackend];
 
-        const transformations: TransformationsMap = {};
-        let calculationError = false;
+        const evaluatorForBackend = (backendKey: MatrixBackend) =>
+            backendKey === 'kan' ? kanEvaluator : expLogEvaluatorInstance;
+
         const activationFn = activation.currentFn;
+        const visualizations: BackendVisualization[] = [];
+        let firstError: string | null = null;
 
-        for (const vector of vectors) {
-            const fullPath: THREE.Vector3[] = [];
+        for (const backendKey of evaluateBackends) {
+            const evaluator = evaluatorForBackend(backendKey);
+            if (!evaluator) {
+                if (backendKey === 'exp-log') {
+                    firstError = firstError ?? (expLogCompatibility.reason ?? 'exp(t ln A) backend unavailable.');
+                } else {
+                    firstError = firstError ?? 'Matrix unavailable.';
+                }
+                continue;
+            }
 
-            for (const sample of matrixSamples) {
-                if (!sample) {
+            const samples = times.map(time => evaluator.getMatrixAt(time, { linearEigenInterpolation }));
+            if (samples.some(sample => !sample)) {
+                firstError = firstError ?? 'Matrix generation failed at specific time samples.';
+                continue;
+            }
+
+            const transformations: TransformationsMap = {};
+            let calculationError = false;
+
+            for (const vector of vectors) {
+                const fullPath: THREE.Vector3[] = [];
+
+                for (const sample of samples) {
+                    if (!sample) {
+                        calculationError = true;
+                        break;
+                    }
+                    const rawPoint = multiplyMatrixVector(sample, vector.value);
+                    const activatedPoint = rawPoint.map(activationFn) as Vector3;
+                    fullPath.push(new THREE.Vector3(...activatedPoint));
+                }
+                if (calculationError || fullPath.length === 0) {
                     calculationError = true;
                     break;
                 }
-                const rawPoint = multiplyMatrixVector(sample, vector.value);
-                const activatedPoint = rawPoint.map(activationFn) as Vector3;
-                fullPath.push(new THREE.Vector3(...activatedPoint));
-            }
-            if (calculationError || fullPath.length === 0) {
-                calculationError = true;
-                break;
+
+                const initial = fullPath[0]?.clone() ?? new THREE.Vector3(...vector.value.map(activationFn) as Vector3);
+                const final = fullPath[fullPath.length - 1]?.clone() ?? initial.clone();
+
+                transformations[vector.id] = { initial, final, fullPath };
             }
 
-            const initial = fullPath[0]?.clone() ?? new THREE.Vector3(...vector.value.map(activationFn) as Vector3);
-            const final = fullPath[fullPath.length - 1]?.clone() ?? initial.clone();
+            if (calculationError) {
+                firstError = firstError ?? "Calculation Error: The matrix might be singular or non-diagonalizable.";
+                continue;
+            }
 
-            transformations[vector.id] = { initial, final, fullPath };
+            visualizations.push({
+                backend: backendKey,
+                label: BACKEND_LABELS[backendKey],
+                color: BACKEND_COLORS[backendKey],
+                transformations
+            });
         }
-        
-        if (calculationError) {
-            return { transformations: null as TransformationsMap | null, error: "Calculation Error: The matrix might be singular or non-diagonalizable." };
-        }
 
-        return { transformations, error: null as string | null };
-    }, [matrixPreparation, vectors, activation.currentFn, activation.error, matrixEvaluator, matrixSamples, samplingConfig.range, expLogCompatibility]);
-    const vectorTransformations = vectorTransformationsResult.transformations;
+        return {
+            visualizations,
+            error: visualizations.length === 0 ? (firstError ?? 'Matrix unavailable.') : firstError
+        };
+    }, [
+        matrixPreparation,
+        vectors,
+        activation.currentFn,
+        activation.error,
+        kanEvaluator,
+        expLogEvaluatorInstance,
+        samplingConfig,
+        matrixBackend,
+        compareBackends,
+        expLogCompatibility,
+        linearEigenInterpolation
+    ]);
 
+
+    const activeVisualizations = vectorTransformationsResult.visualizations;
 
     const sceneData = useMemo(() => {
-        if (!vectorTransformations) return [];
+        const visualizations = activeVisualizations;
+        if (visualizations.length === 0) return [];
         const range = animationConfig.endT - animationConfig.startT;
         if (range <= 0) return [];
 
         const prevT = previousTRef.current;
         const isReversing = t < prevT;
-        const deltaT = Math.abs(t - prevT);
         previousTRef.current = t;
         const axisAccess = {
             x: (vec: THREE.Vector3) => vec.x,
@@ -1090,27 +1160,34 @@ function App() {
 
             return null;
         };
-        
-        const direction = isReversing ? -1 : 1;
 
+        const visibleVectors = vectors.filter(v => v.visible);
         if (dynamicFadingPath && fadingPath) {
-            const visibleIds = new Set(vectors.filter(v => v.visible).map(v => v.id));
+            const visibleKeys = new Set<string>();
+            visualizations.forEach(viz => {
+                visibleVectors.forEach(vector => visibleKeys.add(`${viz.backend}-${vector.id}`));
+            });
             dynamicTrailPointsRef.current.forEach((_, key) => {
-                if (!visibleIds.has(key)) {
+                if (!visibleKeys.has(key)) {
                     dynamicTrailPointsRef.current.delete(key);
                     previousSampleIndexRef.current.delete(key);
                 }
             });
         }
 
-        return vectors
-            .filter(v => v.visible)
-            .map(vector => {
-                const transform = vectorTransformations[vector.id];
+        const entries: SceneObject[] = [];
+
+        visualizations.forEach(viz => {
+            visibleVectors.forEach(vector => {
+                const transform = viz.transformations[vector.id];
+                if (!transform) {
+                    return;
+                }
                 const progress = (t - animationConfig.startT) / range;
                 const sliceEnd = Math.floor(progress * (transform.fullPath.length - 1));
                 const clampedIndex = THREE.MathUtils.clamp(sliceEnd, 0, transform.fullPath.length - 1);
                 const maxTrail = Math.min(fadingPathLength, transform.fullPath.length);
+                const cacheKey = `${viz.backend}-${vector.id}`;
 
                 let currentPath: THREE.Vector3[];
                 if (dynamicFadingPath && fadingPath) {
@@ -1118,8 +1195,8 @@ function App() {
                     const maxSamples = Math.max(2, Math.min(maxTrail, Math.round(Math.max(2, fadingPathLength))));
                     const windowMs = THREE.MathUtils.lerp(450, 6500, THREE.MathUtils.clamp(fadingPathLength / 400, 0, 1));
 
-                    let samples = dynamicTrailPointsRef.current.get(vector.id) ?? [];
-                    let prevIndexStored = previousSampleIndexRef.current.get(vector.id);
+                    let samples = dynamicTrailPointsRef.current.get(cacheKey) ?? [];
+                    let prevIndexStored = previousSampleIndexRef.current.get(cacheKey);
 
                     const pushSample = (index: number, timestamp: number) => {
                         const point = transform.fullPath[index];
@@ -1156,7 +1233,7 @@ function App() {
                         pushSample(clampedIndex, now);
                     }
 
-                    previousSampleIndexRef.current.set(vector.id, clampedIndex);
+                    previousSampleIndexRef.current.set(cacheKey, clampedIndex);
 
                     samples = samples.filter(sample => now - sample.timestamp <= windowMs);
 
@@ -1168,12 +1245,12 @@ function App() {
                         samples = samples.slice(samples.length - maxSamples);
                     }
 
-                    dynamicTrailPointsRef.current.set(vector.id, samples);
+                    dynamicTrailPointsRef.current.set(cacheKey, samples);
 
                     currentPath = samples.map(sample => sample.position.clone());
                 } else {
-                    previousSampleIndexRef.current.set(vector.id, clampedIndex);
-                    dynamicTrailPointsRef.current.delete(vector.id);
+                    previousSampleIndexRef.current.set(cacheKey, clampedIndex);
+                    dynamicTrailPointsRef.current.delete(cacheKey);
                     if (fadingPath) {
                         const start = Math.max(0, clampedIndex - maxTrail + 1);
                         currentPath = transform.fullPath.slice(start, clampedIndex + 1);
@@ -1181,6 +1258,7 @@ function App() {
                         currentPath = transform.fullPath.slice(0, clampedIndex + 1);
                     }
                 }
+
                 const interpolatedVector = currentPath[currentPath.length - 1] || transform.initial;
                 const previousVector = currentPath.length > 1 ? currentPath[currentPath.length - 2] : transform.initial;
 
@@ -1192,17 +1270,38 @@ function App() {
                     }
                 });
 
-                return {
-                    id: vector.id,
-                    color: vector.color,
+                const entryColor = compareBackends ? viz.color : vector.color;
+                const showMarkers = !compareBackends || viz.backend === matrixBackend;
+
+                entries.push({
+                    id: `${viz.backend}-${vector.id}`,
+                    color: entryColor,
                     initialVector: transform.initial,
                     finalVector: transform.final,
-                    interpolatedVector: interpolatedVector,
+                    interpolatedVector,
                     path: currentPath,
                     contacts,
-                };
+                    backend: viz.backend,
+                    sourceVectorId: vector.id,
+                    showMarkers
+                });
             });
-    }, [t, vectors, vectorTransformations, animationConfig.startT, animationConfig.endT, walls, fadingPath, dynamicFadingPath, fadingPathLength]);
+        });
+
+        return entries;
+    }, [
+        activeVisualizations,
+        animationConfig.startT,
+        animationConfig.endT,
+        t,
+        vectors,
+        walls,
+        fadingPath,
+        dynamicFadingPath,
+        fadingPathLength,
+        compareBackends,
+        matrixBackend
+    ]);
 
     const wallContactCounts = useMemo(() => {
         const counts: Record<number, number> = {};
@@ -1253,7 +1352,13 @@ function App() {
     }, [matrixAt]);
 
     const firstVisibleVector = vectors.find(v => v.visible);
-    const firstVisibleSceneData = firstVisibleVector ? sceneData.find(d => d.id === firstVisibleVector.id) : null;
+    const firstVisibleSceneData = useMemo(() => {
+        if (!firstVisibleVector) return null;
+        return sceneData.find(entry =>
+            entry.sourceVectorId === firstVisibleVector.id &&
+            (!compareBackends || entry.backend === matrixBackend)
+        ) ?? sceneData.find(entry => entry.sourceVectorId === firstVisibleVector.id) ?? null;
+    }, [firstVisibleVector, sceneData, compareBackends, matrixBackend]);
 
     const rawTransformedV = useMemo(() => {
         if (!firstVisibleVector || !matrixEvaluator) return null;
@@ -1307,6 +1412,7 @@ function App() {
                     normalizeMatrix={normalizeMatrix}
                     linearEigenInterpolation={linearEigenInterpolation}
                     matrixBackend={matrixBackend}
+                    compareBackends={compareBackends}
                     normalizationWarning={normalizationWarning}
                     onMatrixChange={handleMatrixChange}
                     onPresetSelect={handlePresetSelect}
@@ -1338,6 +1444,7 @@ function App() {
                     onAnimationConfigChange={setAnimationConfig}
                     onRepeatToggle={handleRepeatToggle}
                     onActivationConfigChange={setActivation}
+                    onCompareBackendsChange={handleCompareBackendsToggle}
                     onMatrixBackendChange={handleMatrixBackendChange}
                     onAddWall={handleAddWall}
                     onUpdateWall={handleUpdateWall}
@@ -1366,6 +1473,19 @@ function App() {
                         showEndMarkers={showEndMarkers}
                         dynamicFadingPath={dynamicFadingPath}
                     />
+                    {compareBackends && vectorTransformationsResult.visualizations.length > 0 && (
+                        <div className="absolute bottom-6 left-6 bg-gray-900/80 border border-gray-700 rounded-xl p-4 text-sm text-gray-200 shadow-xl pointer-events-auto">
+                            <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">Path Legend</p>
+                            <div className="space-y-2">
+                                {vectorTransformationsResult.visualizations.map(viz => (
+                                    <div key={viz.backend} className="flex items-center gap-2">
+                                        <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: viz.color }} />
+                                        <span>{viz.label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                  </div>
                  {!controlsPanelVisible && (
                     <button
