@@ -116,7 +116,10 @@ const InfoPanel: React.FC<InfoPanelProps> = ({
         : eigenvaluesAtT.map((value, index) => `λ${index + 1}: ${formatEigenvalue(value)}`).join('\n');
 
     return (
-        <div className="absolute top-6 right-6 bg-gray-900/80 backdrop-blur-md text-white p-6 rounded-xl shadow-2xl font-mono text-sm border border-gray-700 pointer-events-auto w-[22rem] max-w-[24rem]">
+        <div
+            className="absolute top-6 right-6 bg-gray-900/80 backdrop-blur-md text-white p-6 rounded-xl shadow-2xl font-mono text-sm border border-gray-700 pointer-events-auto w-[22rem] max-w-[24rem]"
+            data-tour-id="tour-info"
+        >
             <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
                     <p className="text-xs uppercase tracking-wide text-gray-400">Panel</p>

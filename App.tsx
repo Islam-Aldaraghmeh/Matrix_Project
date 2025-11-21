@@ -2,8 +2,9 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import * as math from 'mathjs';
 import * as THREE from 'three';
 import Scene from './components/Scene';
-import ControlsPanel from './components/ControlsPanel';
+import ControlsPanel, { type ControlsPanelTab } from './components/ControlsPanel';
 import InfoPanel from './components/InfoPanel';
+import GuidedTour, { type TourStep } from './components/GuidedTour';
 import { createMatrixEvaluator, multiplyMatrixVector, validateExpLogMatrix } from './utils/mathUtils';
 import type { ExpLogValidationResult, MatrixBackend } from './utils/mathUtils';
 import { easingFunctions } from './utils/easing';
@@ -65,6 +66,88 @@ const BACKEND_COLORS: Record<MatrixBackend, string> = {
     kan: '#22d3ee',
     'exp-log': '#f97316'
 };
+
+const TOUR_STEPS: TourStep[] = [
+    {
+        id: 'layout',
+        title: 'Welcome to the interactive tour',
+        description: 'This left panel holds every control for the visualizer. Everything stays clickable while the tour runs—use Skip Tour any time to exit on purpose.',
+        selector: '[data-tour-id="tour-controls"]',
+        tab: 'controls',
+        spotlightPadding: 14
+    },
+    {
+        id: 'scene',
+        title: '3D scene: follow the paths',
+        description: 'Drag to orbit, scroll to zoom. The highlighted vectors trace how A^t moves them; start the tour playback to see the motion live.',
+        selector: '[data-tour-id="tour-scene"]',
+        tab: 'controls'
+    },
+    {
+        id: 'matrix',
+        title: 'Set up A or randomize',
+        description: 'Choose presets or press Random to sample a new matrix. For fair backend comparisons, keep exp(t ln A) eligible (positive real eigenvalues).',
+        selector: '[data-tour-id="tour-matrix"]',
+        tab: 'controls'
+    },
+    {
+        id: 'backend',
+        title: 'Pick and compare backends',
+        description: 'In the Config tab, choose KAN or exp(t ln A). Toggle Compare Backends to plot both paths together on the same random matrix.',
+        selector: '[data-tour-id="tour-backend"]',
+        tab: 'animation'
+    },
+    {
+        id: 'playback',
+        title: 'Animate and explore',
+        description: 'Use Play/Pause or Explore to ping-pong through t. Explore will keep randomizing matrices (and vectors if you want) so you can watch both backends update.',
+        selector: '[data-tour-id="tour-playback"]',
+        tab: 'animation'
+    },
+    {
+        id: 'vectors',
+        title: 'Shape the input vectors',
+        description: 'Add, recolor, toggle visibility, and normalize vectors. These are the starting points whose trajectories you compare between backends.',
+        selector: '[data-tour-id="tour-vectors"]',
+        tab: 'controls'
+    },
+    {
+        id: 'parameter',
+        title: 'Time control',
+        description: 'Scrub t, clamp its range, and tune the sampling precision to inspect how A^t acts on each vector at any instant.',
+        selector: '[data-tour-id="tour-parameter"]',
+        tab: 'controls'
+    },
+    {
+        id: 'activation',
+        title: 'Activation transforms',
+        description: 'Apply preset or custom activation functions to A^t v. Combine with backend comparison to see how nonlinear choices bend the paths.',
+        selector: '[data-tour-id="tour-activation"]',
+        tab: 'animation'
+    },
+    {
+        id: 'walls',
+        title: 'Collision walls',
+        description: 'Add axis-aligned planes to track contact points. Handy when you want to see how each backend sends vectors into or through boundaries.',
+        selector: '[data-tour-id="tour-walls"]',
+        tab: 'walls'
+    },
+    {
+        id: 'info',
+        title: 'Diagnostics panel',
+        description: 'Monitor eigenvalues, determinants, and the current A^t and f(A^t v). Use this to verify random matrices are valid for exp(t ln A).',
+        selector: '[data-tour-id="tour-info"]',
+        tab: 'none',
+        spotlightPadding: 10
+    },
+    {
+        id: 'profiles',
+        title: 'Save and reload scenarios',
+        description: 'Store setups while experimenting with both backends. Save profiles for matrices you like, reload them, and continue comparing paths.',
+        selector: '[data-tour-id="tour-profiles"]',
+        tab: 'profiles'
+    }
+];
 
 const randomVector = (nonNegative = false): Vector3 => {
     const base: Vector3 = [
@@ -318,6 +401,10 @@ function App() {
     const [activeProfileName, setActiveProfileName] = useState<string | null>(null);
     const [controlsPanelVisible, setControlsPanelVisible] = useState<boolean>(true);
     const [infoPanelVisible, setInfoPanelVisible] = useState<boolean>(true);
+    const [controlsActiveTab, setControlsActiveTab] = useState<ControlsPanelTab>('controls');
+    const [preTourTab, setPreTourTab] = useState<ControlsPanelTab>('controls');
+    const [tourActive, setTourActive] = useState<boolean>(false);
+    const [tourStepIndex, setTourStepIndex] = useState<number>(0);
 
     // Animation state
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -363,6 +450,12 @@ function App() {
         }
     }, [activation.name, activation.customFnStr]);
 
+    useEffect(() => {
+        if (!tourActive) {
+            setPreTourTab(controlsActiveTab);
+        }
+    }, [controlsActiveTab, tourActive]);
+
 
     const stopAnimation = useCallback(() => {
         setIsPlaying(false);
@@ -386,6 +479,21 @@ function App() {
             previousSampleIndexRef.current.clear();
         }
     }, [fadingPath, dynamicFadingPath]);
+
+    useEffect(() => {
+        if (!tourActive) return;
+        const currentStep = TOUR_STEPS[tourStepIndex];
+        if (!currentStep) return;
+        if (currentStep.tab && currentStep.tab !== 'none' && currentStep.tab !== controlsActiveTab) {
+            setControlsActiveTab(currentStep.tab);
+        }
+        if (!controlsPanelVisible) {
+            setControlsPanelVisible(true);
+        }
+        if (currentStep.id === 'info') {
+            setInfoPanelVisible(true);
+        }
+    }, [tourActive, tourStepIndex, controlsActiveTab, controlsPanelVisible]);
 
     const randomizeVectors = useCallback((nonNegative = false) => {
         setVectors(prev => prev.map(vector => {
@@ -545,6 +653,36 @@ function App() {
 
     const handleRemoveWall = useCallback((id: number) => {
         setWalls(prev => prev.filter(wall => wall.id !== id));
+    }, []);
+
+    const handleControlsTabChange = useCallback((tab: ControlsPanelTab) => {
+        setControlsActiveTab(tab);
+    }, []);
+
+    const startTour = useCallback(() => {
+        setPreTourTab(controlsActiveTab);
+        setControlsPanelVisible(true);
+        setInfoPanelVisible(true);
+        setTourStepIndex(0);
+        const firstTab = TOUR_STEPS[0]?.tab;
+        if (firstTab && firstTab !== 'none') {
+            setControlsActiveTab(firstTab);
+        }
+        setTourActive(true);
+    }, [controlsActiveTab]);
+
+    const handleTourExit = useCallback(() => {
+        setTourActive(false);
+        setTourStepIndex(0);
+        setControlsActiveTab(preTourTab);
+    }, [preTourTab]);
+
+    const handleTourNext = useCallback(() => {
+        setTourStepIndex(prev => Math.min(prev + 1, TOUR_STEPS.length - 1));
+    }, []);
+
+    const handleTourPrev = useCallback(() => {
+        setTourStepIndex(prev => Math.max(0, prev - 1));
     }, []);
 
     const handlePlayPause = useCallback(() => {
@@ -1383,87 +1521,37 @@ function App() {
 
 
     return (
-        <div className="w-screen h-screen flex flex-col md:flex-row bg-gray-900 overflow-hidden">
-            {controlsPanelVisible && (
-                <ControlsPanel
-                    matrix={matrixA}
-                    vectors={vectors}
-                    autoNormalizeVectors={autoNormalizeVectors}
-                    walls={walls}
-                    t={t}
-                    tPrecision={tPrecision}
-                    dotMode={dotMode}
-                    dotSize={dotSize}
-                    fadingPath={fadingPath}
-                    fadingPathLength={fadingPathLength}
-                    fadingPathStyle={fadingPathStyle}
-                    showStartMarkers={showStartMarkers}
-                    showEndMarkers={showEndMarkers}
-                    dynamicFadingPath={dynamicFadingPath}
-                    isPlaying={isPlaying}
-                    isExploring={isExploring}
-                    exploreRandomizeVectors={exploreRandomizeVectors}
-                    animationConfig={animationConfig}
-                    repeatAnimation={repeatAnimation}
-                    activationConfig={activation}
-                    selectedPresetName={selectedPresetName}
-                    matrixScalar={matrixScalar}
-                    matrixExponent={matrixExponent}
-                    normalizeMatrix={normalizeMatrix}
-                    linearEigenInterpolation={linearEigenInterpolation}
-                    matrixBackend={matrixBackend}
-                    compareBackends={compareBackends}
-                    normalizationWarning={normalizationWarning}
-                    onMatrixChange={handleMatrixChange}
-                    onPresetSelect={handlePresetSelect}
-                    onMatrixScalarChange={handleMatrixScalarChange}
-                    onMatrixExponentChange={handleMatrixExponentChange}
-                    onNormalizeToggle={handleNormalizeToggle}
-                    onLinearInterpolationToggle={handleLinearInterpolationToggle}
-                    onVectorChange={handleVectorChange}
-                    onVectorColorChange={handleVectorColorChange}
-                    onAddVector={handleAddVector}
-                    onNormalizeVectors={handleNormalizeVectors}
-                    onAutoNormalizeVectorsChange={handleAutoNormalizeToggle}
-                    onRemoveVector={handleRemoveVector}
-                    onToggleVisibility={handleToggleVectorVisibility}
-                    onTChange={handleTChange}
-                    onTPrecisionChange={setTPrecision}
-                    onDotModeChange={setDotMode}
-                    onDotSizeChange={handleDotSizeChange}
-                    onFadingPathToggle={setFadingPath}
-                    onFadingPathLengthChange={handleFadingPathLengthChange}
-                    onFadingPathStyleChange={setFadingPathStyle}
-                    onDynamicFadingPathChange={setDynamicFadingPath}
-                    onShowStartMarkersChange={setShowStartMarkers}
-                    onShowEndMarkersChange={setShowEndMarkers}
-                    onResetTime={resetTime}
-                    onPlayPause={handlePlayPause}
-                    onExploreToggle={handleExploreToggle}
-                    onExploreRandomizeVectorsChange={setExploreRandomizeVectors}
-                    onAnimationConfigChange={setAnimationConfig}
-                    onRepeatToggle={handleRepeatToggle}
-                    onActivationConfigChange={setActivation}
-                    onCompareBackendsChange={handleCompareBackendsToggle}
-                    onMatrixBackendChange={handleMatrixBackendChange}
-                    onAddWall={handleAddWall}
-                    onUpdateWall={handleUpdateWall}
-                    onRemoveWall={handleRemoveWall}
-                    profileSummaries={profileSummaries}
-                    activeProfileName={activeProfileName}
-                    onProfileSave={handleProfileSave}
-                    onProfileLoad={handleProfileLoad}
-                    onProfileDelete={handleProfileDelete}
-                    error={error}
-                    backendError={backendError}
-                    onCollapse={() => setControlsPanelVisible(false)}
-                />
-            )}
-            <div className="flex-grow h-1/2 md:h-full w-full md:w-auto relative pointer-events-none">
-                 <div className="absolute inset-0 pointer-events-auto">
-                    <Scene
-                        sceneData={sceneData}
+        <>
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40 space-y-1 text-center">
+                <button
+                    type="button"
+                    onClick={startTour}
+                    disabled={tourActive}
+                    className={`px-4 py-2 rounded-lg shadow-lg border text-sm font-semibold transition-colors ${
+                        tourActive
+                            ? 'bg-gray-800 border-cyan-500/50 text-cyan-300 cursor-not-allowed'
+                            : 'bg-cyan-600 border-cyan-500 text-gray-900 hover:bg-cyan-500'
+                    }`}
+                >
+                    {tourActive ? `Tour running (${tourStepIndex + 1}/${TOUR_STEPS.length})` : 'Start guided tour'}
+                </button>
+                {tourActive && (
+                    <p className="text-[11px] text-gray-300">
+                        The guide stays active until you hit Skip Tour in the footer.
+                    </p>
+                )}
+            </div>
+            <div className="w-screen h-screen flex flex-col md:flex-row bg-gray-900 overflow-hidden">
+                {controlsPanelVisible && (
+                    <ControlsPanel
+                        activeTab={controlsActiveTab}
+                        onTabChange={handleControlsTabChange}
+                        matrix={matrixA}
+                        vectors={vectors}
+                        autoNormalizeVectors={autoNormalizeVectors}
                         walls={walls}
+                        t={t}
+                        tPrecision={tPrecision}
                         dotMode={dotMode}
                         dotSize={dotSize}
                         fadingPath={fadingPath}
@@ -1472,63 +1560,144 @@ function App() {
                         showStartMarkers={showStartMarkers}
                         showEndMarkers={showEndMarkers}
                         dynamicFadingPath={dynamicFadingPath}
-                    />
-                    {compareBackends && vectorTransformationsResult.visualizations.length > 0 && (
-                        <div className="absolute bottom-6 left-6 bg-gray-900/80 border border-gray-700 rounded-xl p-4 text-sm text-gray-200 shadow-xl pointer-events-auto">
-                            <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">Path Legend</p>
-                            <div className="space-y-2">
-                                {vectorTransformationsResult.visualizations.map(viz => (
-                                    <div key={viz.backend} className="flex items-center gap-2">
-                                        <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: viz.color }} />
-                                        <span>{viz.label}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                 </div>
-                 {!controlsPanelVisible && (
-                    <button
-                        onClick={() => setControlsPanelVisible(true)}
-                        className="absolute top-6 left-6 px-4 py-2 rounded-lg bg-gray-900/80 border border-gray-700 text-cyan-300 hover:text-white hover:border-cyan-400 transition-colors pointer-events-auto shadow-lg"
-                    >
-                        Show Controls
-                    </button>
-                 )}
-                 {infoPanelVisible ? (
-                    <InfoPanel
-                        baseMatrix={matrixA}
-                        effectiveMatrix={matrixPreparation.matrix}
+                        isPlaying={isPlaying}
+                        isExploring={isExploring}
+                        exploreRandomizeVectors={exploreRandomizeVectors}
+                        animationConfig={animationConfig}
+                        repeatAnimation={repeatAnimation}
+                        activationConfig={activation}
+                        selectedPresetName={selectedPresetName}
                         matrixScalar={matrixScalar}
-                        matrixExponent={matrixPreparation.exponent}
-                        normalizeRequested={normalizeMatrix}
-                        normalizeApplied={matrixPreparation.normalizationApplied}
-                        determinantBefore={matrixPreparation.determinantBefore}
-                        determinantAfter={matrixPreparation.determinantAfter}
+                        matrixExponent={matrixExponent}
+                        normalizeMatrix={normalizeMatrix}
+                        linearEigenInterpolation={linearEigenInterpolation}
+                        matrixBackend={matrixBackend}
+                        compareBackends={compareBackends}
                         normalizationWarning={normalizationWarning}
-                        walls={walls}
-                        wallContactCounts={wallContactCounts}
-                        eigenvalues={effectiveEigenvalues}
-                        eigenvaluesAtT={matrixAtEigenvalues}
-                        matrixAt={matrixAt}
-                        determinantAtT={matrixAtDeterminant}
-                        vectorV={firstVisibleVector?.value || null}
-                        rawTransformedV={rawTransformedV}
-                        transformedV={firstVisibleSceneData?.interpolatedVector ? [firstVisibleSceneData.interpolatedVector.x, firstVisibleSceneData.interpolatedVector.y, firstVisibleSceneData.interpolatedVector.z] : null}
-                        activationFnName={activation.name}
-                        customActivationFnStr={activation.customFnStr}
-                        onCollapse={() => setInfoPanelVisible(false)}
+                        onMatrixChange={handleMatrixChange}
+                        onPresetSelect={handlePresetSelect}
+                        onMatrixScalarChange={handleMatrixScalarChange}
+                        onMatrixExponentChange={handleMatrixExponentChange}
+                        onNormalizeToggle={handleNormalizeToggle}
+                        onLinearInterpolationToggle={handleLinearInterpolationToggle}
+                        onVectorChange={handleVectorChange}
+                        onVectorColorChange={handleVectorColorChange}
+                        onAddVector={handleAddVector}
+                        onNormalizeVectors={handleNormalizeVectors}
+                        onAutoNormalizeVectorsChange={handleAutoNormalizeToggle}
+                        onRemoveVector={handleRemoveVector}
+                        onToggleVisibility={handleToggleVectorVisibility}
+                        onTChange={handleTChange}
+                        onTPrecisionChange={setTPrecision}
+                        onDotModeChange={setDotMode}
+                        onDotSizeChange={handleDotSizeChange}
+                        onFadingPathToggle={setFadingPath}
+                        onFadingPathLengthChange={handleFadingPathLengthChange}
+                        onFadingPathStyleChange={setFadingPathStyle}
+                        onDynamicFadingPathChange={setDynamicFadingPath}
+                        onShowStartMarkersChange={setShowStartMarkers}
+                        onShowEndMarkersChange={setShowEndMarkers}
+                        onResetTime={resetTime}
+                        onPlayPause={handlePlayPause}
+                        onExploreToggle={handleExploreToggle}
+                        onExploreRandomizeVectorsChange={setExploreRandomizeVectors}
+                        onAnimationConfigChange={setAnimationConfig}
+                        onRepeatToggle={handleRepeatToggle}
+                        onActivationConfigChange={setActivation}
+                        onCompareBackendsChange={handleCompareBackendsToggle}
+                        onMatrixBackendChange={handleMatrixBackendChange}
+                        onAddWall={handleAddWall}
+                        onUpdateWall={handleUpdateWall}
+                        onRemoveWall={handleRemoveWall}
+                        profileSummaries={profileSummaries}
+                        activeProfileName={activeProfileName}
+                        onProfileSave={handleProfileSave}
+                        onProfileLoad={handleProfileLoad}
+                        onProfileDelete={handleProfileDelete}
+                        error={error}
+                        backendError={backendError}
+                        onCollapse={() => setControlsPanelVisible(false)}
                     />
-                 ) : (
-                    <button
-                        onClick={() => setInfoPanelVisible(true)}
-                        className="absolute top-6 right-6 px-4 py-2 rounded-lg bg-gray-900/80 border border-gray-700 text-cyan-300 hover:text-white hover:border-cyan-400 transition-colors pointer-events-auto shadow-lg"
-                    >
-                        Show Info
-                    </button>
-                 )}
+                )}
+                <div className="flex-grow h-1/2 md:h-full w-full md:w-auto relative pointer-events-none">
+                     <div className="absolute inset-0 pointer-events-auto" data-tour-id="tour-scene">
+                        <Scene
+                            sceneData={sceneData}
+                            walls={walls}
+                            dotMode={dotMode}
+                            dotSize={dotSize}
+                            fadingPath={fadingPath}
+                            fadingPathLength={fadingPathLength}
+                            fadingPathStyle={fadingPathStyle}
+                            showStartMarkers={showStartMarkers}
+                            showEndMarkers={showEndMarkers}
+                            dynamicFadingPath={dynamicFadingPath}
+                        />
+                        {compareBackends && vectorTransformationsResult.visualizations.length > 0 && (
+                            <div className="absolute bottom-6 left-6 bg-gray-900/80 border border-gray-700 rounded-xl p-4 text-sm text-gray-200 shadow-xl pointer-events-auto">
+                                <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">Path Legend</p>
+                                <div className="space-y-2">
+                                    {vectorTransformationsResult.visualizations.map(viz => (
+                                        <div key={viz.backend} className="flex items-center gap-2">
+                                            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: viz.color }} />
+                                            <span>{viz.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                     </div>
+                     {!controlsPanelVisible && (
+                        <button
+                            onClick={() => setControlsPanelVisible(true)}
+                            className="absolute top-6 left-6 px-4 py-2 rounded-lg bg-gray-900/80 border border-gray-700 text-cyan-300 hover:text-white hover:border-cyan-400 transition-colors pointer-events-auto shadow-lg"
+                        >
+                            Show Controls
+                        </button>
+                     )}
+                     {infoPanelVisible ? (
+                        <InfoPanel
+                            baseMatrix={matrixA}
+                            effectiveMatrix={matrixPreparation.matrix}
+                            matrixScalar={matrixScalar}
+                            matrixExponent={matrixPreparation.exponent}
+                            normalizeRequested={normalizeMatrix}
+                            normalizeApplied={matrixPreparation.normalizationApplied}
+                            determinantBefore={matrixPreparation.determinantBefore}
+                            determinantAfter={matrixPreparation.determinantAfter}
+                            normalizationWarning={normalizationWarning}
+                            walls={walls}
+                            wallContactCounts={wallContactCounts}
+                            eigenvalues={effectiveEigenvalues}
+                            eigenvaluesAtT={matrixAtEigenvalues}
+                            matrixAt={matrixAt}
+                            determinantAtT={matrixAtDeterminant}
+                            vectorV={firstVisibleVector?.value || null}
+                            rawTransformedV={rawTransformedV}
+                            transformedV={firstVisibleSceneData?.interpolatedVector ? [firstVisibleSceneData.interpolatedVector.x, firstVisibleSceneData.interpolatedVector.y, firstVisibleSceneData.interpolatedVector.z] : null}
+                            activationFnName={activation.name}
+                            customActivationFnStr={activation.customFnStr}
+                            onCollapse={() => setInfoPanelVisible(false)}
+                        />
+                     ) : (
+                        <button
+                            onClick={() => setInfoPanelVisible(true)}
+                            className="absolute top-6 right-6 px-4 py-2 rounded-lg bg-gray-900/80 border border-gray-700 text-cyan-300 hover:text-white hover:border-cyan-400 transition-colors pointer-events-auto shadow-lg"
+                        >
+                            Show Info
+                        </button>
+                     )}
+                </div>
             </div>
-        </div>
+            <GuidedTour
+                active={tourActive}
+                stepIndex={tourStepIndex}
+                steps={TOUR_STEPS}
+                onNext={handleTourNext}
+                onPrev={handleTourPrev}
+                onExit={handleTourExit}
+            />
+        </>
     );
 }
 

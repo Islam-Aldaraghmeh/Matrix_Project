@@ -21,7 +21,11 @@ interface ActivationConfig {
     error: string | null;
 }
 
+export type ControlsPanelTab = 'controls' | 'animation' | 'walls' | 'profiles';
+
 interface ControlsPanelProps {
+    activeTab: ControlsPanelTab;
+    onTabChange: (tab: ControlsPanelTab) => void;
     matrix: Matrix3;
     vectors: VectorObject[];
     autoNormalizeVectors: boolean;
@@ -179,6 +183,8 @@ const DOT_SIZE_MAX = 0.2;
 
 const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     const {
+        activeTab,
+        onTabChange,
         matrix,
         vectors,
         autoNormalizeVectors,
@@ -252,7 +258,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onCollapse
     } = props;
     
-    const [activeTab, setActiveTab] = useState<'controls' | 'animation' | 'walls' | 'profiles'>('controls');
     const [profileNameInput, setProfileNameInput] = useState<string>('');
     const [profileFeedback, setProfileFeedback] = useState<ProfileOperationResult | null>(null);
 
@@ -353,7 +358,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     }, [currentSliderIndex]);
     
     return (
-        <div className="w-full md:w-[28rem] bg-gray-800 flex flex-col flex-shrink-0 shadow-2xl z-10">
+        <div className="w-full md:w-[28rem] bg-gray-800 flex flex-col flex-shrink-0 shadow-2xl z-10" data-tour-id="tour-controls">
              <div className="p-6 pb-0">
                 <div className="flex items-start justify-between gap-4">
                     <div>
@@ -373,17 +378,17 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
             
             <div className="border-b border-gray-700 px-4">
                 <nav className="-mb-px flex space-x-2" aria-label="Tabs">
-                    <TabButton active={activeTab === 'controls'} onClick={() => setActiveTab('controls')}>Controls</TabButton>
-                    <TabButton active={activeTab === 'animation'} onClick={() => setActiveTab('animation')}>Config</TabButton>
-                    <TabButton active={activeTab === 'walls'} onClick={() => setActiveTab('walls')}>Walls</TabButton>
-                    <TabButton active={activeTab === 'profiles'} onClick={() => setActiveTab('profiles')}>Profiles</TabButton>
+                    <TabButton active={activeTab === 'controls'} onClick={() => onTabChange('controls')}>Controls</TabButton>
+                    <TabButton active={activeTab === 'animation'} onClick={() => onTabChange('animation')}>Config</TabButton>
+                    <TabButton active={activeTab === 'walls'} onClick={() => onTabChange('walls')}>Walls</TabButton>
+                    <TabButton active={activeTab === 'profiles'} onClick={() => onTabChange('profiles')}>Profiles</TabButton>
                 </nav>
             </div>
 
             <div className="flex-grow p-6 overflow-y-auto">
                 {activeTab === 'controls' && (
                     <div className="space-y-6">
-                        <div>
+                        <div data-tour-id="tour-settings">
                             <h2 className="text-lg font-semibold mb-2 text-gray-200">Settings</h2>
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
@@ -528,7 +533,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             </div>
                         </div>
 
-                        <div>
+                        <div data-tour-id="tour-matrix">
                             <h2 className="text-lg font-semibold mb-2 text-gray-200">Matrix A</h2>
                             <div className="p-3 bg-gray-900/50 rounded-lg">
                                 <div className="mb-3 pb-3 border-b border-gray-700">
@@ -631,7 +636,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             </div>
                         </div>
 
-                        <div>
+                        <div data-tour-id="tour-vectors">
                             <div className="flex justify-between items-center mb-2">
                                 <h2 className="text-lg font-semibold text-gray-200">Initial Vectors</h2>
                                 <div className="flex items-center gap-2">
@@ -677,7 +682,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             </div>
                         </div>
 
-                        <div>
+                        <div data-tour-id="tour-parameter">
                             <h2 className="text-lg font-semibold mb-2 text-gray-200">
                                 Parameter t = {t.toFixed(getPrecisionSliderValue(tPrecision))}
                             </h2>
@@ -738,7 +743,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             </select>
                         </div>
 
-                        <div>
+                        <div data-tour-id="tour-backend">
                             <h2 className="text-lg font-semibold mb-2 text-gray-200">Computation Backend</h2>
                             <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-800/70">
                                 <p className="text-xs text-gray-400 mb-2">Pick how A<sup>t</sup> is built when animating.</p>
@@ -788,7 +793,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             </div>
                         </div>
                         
-                        <div>
+                        <div data-tour-id="tour-activation">
                             <h2 className="text-lg font-semibold mb-2 text-gray-200">Activation Function</h2>
                             <div className="space-y-3 bg-gray-900/50 p-3 rounded-lg">
                                 <select
@@ -813,7 +818,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             </div>
                         </div>
 
-                         <div>
+                        <div data-tour-id="tour-animation-config">
                             <h2 className="text-lg font-semibold mb-2 text-gray-200">Animation Config</h2>
                             <div className="space-y-3 bg-gray-900/50 p-3 rounded-lg">
                                 <div className="flex items-center justify-between">
@@ -853,7 +858,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                             </div>
                         </div>
 
-                        <div>
+                        <div data-tour-id="tour-playback">
                             <h2 className="text-lg font-semibold mb-2 text-gray-200">Playback</h2>
                             <div className="bg-gray-900/50 p-3 rounded-lg space-y-3">
                                 <div className="w-full bg-gray-600 rounded-full h-2.5">
@@ -899,7 +904,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                 )}
 
                 {activeTab === 'walls' && (
-                    <div className="space-y-6">
+                    <div className="space-y-6" data-tour-id="tour-walls">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-gray-200">Collision Walls</h2>
                             <button
@@ -958,7 +963,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                 )}
 
                 {activeTab === 'profiles' && (
-                    <div className="space-y-6">
+                    <div className="space-y-6" data-tour-id="tour-profiles">
                         <div className="bg-gray-900/60 rounded-lg p-4 border border-gray-700/60 space-y-4">
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-200">Save Current Setup</h2>
