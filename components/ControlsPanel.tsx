@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Matrix3, Vector3, VectorObject, Wall, FadingPathStyle } from '../types';
+import type { Matrix2, Vector2, VectorObject, Wall, FadingPathStyle } from '../types';
 import type { MatrixBackend } from '../utils/mathUtils';
 import type { ActivationFunction } from '../utils/activationFunctions';
 import { easingFunctions } from '../utils/easing';
@@ -26,7 +26,7 @@ export type ControlsPanelTab = 'controls' | 'animation' | 'walls' | 'profiles';
 interface ControlsPanelProps {
     activeTab: ControlsPanelTab;
     onTabChange: (tab: ControlsPanelTab) => void;
-    matrix: Matrix3;
+    matrix: Matrix2;
     vectors: VectorObject[];
     autoNormalizeVectors: boolean;
     walls: Wall[];
@@ -53,14 +53,15 @@ interface ControlsPanelProps {
     linearEigenInterpolation: boolean;
     matrixBackend: MatrixBackend;
     compareBackends: boolean;
+    navigationSensitivity: number;
     normalizationWarning: string | null;
-    onMatrixChange: (matrix: Matrix3) => void;
+    onMatrixChange: (matrix: Matrix2) => void;
     onPresetSelect: (name: string) => void;
     onMatrixScalarChange: (value: number) => void;
     onMatrixExponentChange: (value: number) => void;
     onNormalizeToggle: (enabled: boolean) => void;
     onLinearInterpolationToggle: (enabled: boolean) => void;
-    onVectorChange: (id: number, value: Vector3) => void;
+    onVectorChange: (id: number, value: Vector2) => void;
     onVectorColorChange: (id: number, color: string) => void;
     onAddVector: () => void;
     onNormalizeVectors: () => void;
@@ -86,6 +87,7 @@ interface ControlsPanelProps {
     onRepeatToggle: (enabled: boolean) => void;
     onActivationConfigChange: (config: ActivationConfig) => void;
     onCompareBackendsChange: (enabled: boolean) => void;
+    onNavigationSensitivityChange: (value: number) => void;
     onAddWall: () => void;
     onUpdateWall: (id: number, updates: Partial<Wall>) => void;
     onRemoveWall: (id: number) => void;
@@ -122,14 +124,14 @@ const NumberInput: React.FC<{
 
 const VectorControls: React.FC<{
     vector: VectorObject;
-    onVectorChange: (id: number, value: Vector3) => void;
+    onVectorChange: (id: number, value: Vector2) => void;
     onVectorColorChange: (id: number, color: string) => void;
     onRemoveVector: (id: number) => void;
     onToggleVisibility: (id: number) => void;
 }> = ({ vector, onVectorChange, onVectorColorChange, onRemoveVector, onToggleVisibility }) => {
     
     const handleValueChange = (index: number, value: number) => {
-        const newVector = [...vector.value] as Vector3;
+        const newVector = [...vector.value] as Vector2;
         newVector[index] = value;
         onVectorChange(vector.id, newVector);
     };
@@ -147,7 +149,7 @@ const VectorControls: React.FC<{
                         aria-label="Change vector color"
                     />
                 </div>
-                <div className="grid grid-cols-3 gap-2 flex-grow">
+                <div className="grid grid-cols-2 gap-2 flex-grow">
                     {vector.value.map((val, i) => (
                         <NumberInput key={i} value={val} onChange={(v) => handleValueChange(i, v)} className="w-full" />
                     ))}
@@ -212,6 +214,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         linearEigenInterpolation,
         matrixBackend,
         compareBackends,
+        navigationSensitivity,
         normalizationWarning,
         onMatrixChange,
         onPresetSelect,
@@ -245,6 +248,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         onRepeatToggle,
         onActivationConfigChange,
         onCompareBackendsChange,
+        onNavigationSensitivityChange,
         onAddWall,
         onUpdateWall,
         onRemoveWall,
@@ -274,7 +278,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     }, [profileFeedback]);
 
     const handleMatrixValueChange = (row: number, col: number, value: number) => {
-        const newMatrix = matrix.map(r => [...r]) as Matrix3;
+        const newMatrix = matrix.map(r => [...r]) as Matrix2;
         newMatrix[row][col] = value;
         onMatrixChange(newMatrix);
     };
@@ -362,7 +366,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
              <div className="p-6 pb-0">
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-cyan-400 mb-1">Matrix Path Visualizer</h1>
+                        <h1 className="text-2xl font-bold text-cyan-400 mb-1">2D Matrix Path Visualizer</h1>
                         <p className="text-sm text-gray-400 italic mb-4">Made by Islam Aldaraghmeh</p>
                     </div>
                     {onCollapse && (
@@ -626,7 +630,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                         )}
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2 pt-3">
+                                <div className="grid grid-cols-2 gap-2 pt-3">
                                     {matrix.map((row, i) =>
                                         row.map((val, j) => (
                                             <NumberInput key={`${i}-${j}`} value={val} onChange={(v) => handleMatrixValueChange(i, j, v)} className="w-full" />
@@ -724,6 +728,28 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                         onChange={(e) => handlePrecisionChange(parseInt(e.target.value, 10))}
                                         className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 mt-1"
                                     />
+                                </div>
+                            </div>
+                            <div className="mt-4">
+                                <h3 className="text-sm font-semibold text-gray-200 mb-2">Navigation Sensitivity</h3>
+                                <div className="bg-gray-900/60 rounded-lg p-3 space-y-2">
+                                    <input
+                                        type="range"
+                                        min={0.25}
+                                        max={2}
+                                        step={0.05}
+                                        value={navigationSensitivity}
+                                        onChange={(e) => onNavigationSensitivityChange(parseFloat(e.target.value))}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span>Slower</span>
+                                        <span className="text-cyan-300 font-mono">{navigationSensitivity.toFixed(2)}</span>
+                                        <span>Faster</span>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400">
+                                        Tune scroll zoom and drag pan responsiveness for the 2D view.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -917,7 +943,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                         <div className="space-y-3">
                             {walls.length === 0 && (
                                 <p className="text-sm text-gray-400 bg-gray-900/40 border border-gray-700 rounded-lg p-4">
-                                    Add planes aligned to the global axes. Each wall reflects the plane defined by the chosen axis at the specified position.
+                                    Add axis-aligned lines to catch intersections on the 2D plane. Each wall is the line defined by the chosen axis at the specified position.
                                 </p>
                             )}
                             {walls.map(wall => (
@@ -941,7 +967,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                         >
                                             <option value="x">x</option>
                                             <option value="y">y</option>
-                                            <option value="z">z</option>
                                         </select>
                                     </div>
                                     <div className="flex items-center justify-between">
@@ -954,7 +979,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                                         />
                                     </div>
                                     <p className="text-xs text-gray-500">
-                                        {`Plane: ${wall.axis.toUpperCase()} = ${wall.position.toFixed(2)}`}
+                                        {`Line: ${wall.axis.toUpperCase()} = ${wall.position.toFixed(2)}`}
                                     </p>
                                 </div>
                             ))}

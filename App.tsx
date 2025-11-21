@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import * as math from 'mathjs';
-import * as THREE from 'three';
 import Scene from './components/Scene';
 import ControlsPanel, { type ControlsPanelTab } from './components/ControlsPanel';
 import InfoPanel from './components/InfoPanel';
@@ -11,7 +10,7 @@ import { easingFunctions } from './utils/easing';
 import { activationFunctionMap, parseCustomActivation } from './utils/activationFunctions';
 import { generateRandomGLPlusMatrix } from './utils/randomMatrix';
 import type { ActivationFunction } from './utils/activationFunctions';
-import type { Matrix3, Vector3, VectorObject, Wall, FadingPathStyle } from './types';
+import type { Matrix2, Vector2, VectorObject, Wall, FadingPathStyle, Point2, SceneVectorEntry } from './types';
 import {
     listProfiles,
     loadProfile as loadStoredProfile,
@@ -29,28 +28,31 @@ import {
 
 // --- CONSTANTS ---
 
-const INITIAL_MATRIX: Matrix3 = [
-    [Math.cos(2), -Math.sin(2), 0],
-    [Math.sin(2), Math.cos(2), 0],
-    [0, 0, 1]
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+const INITIAL_MATRIX: Matrix2 = [
+    [Math.cos(2), -Math.sin(2)],
+    [Math.sin(2), Math.cos(2)]
 ];
 
-export const PRESET_MATRICES: { name: string; matrix: Matrix3 }[] = [
-    { name: "Rotation (XY, 2rad)", matrix: INITIAL_MATRIX },
-    { name: "Shear", matrix: [[1, 1, 0], [0, 1, 0], [0, 0, 1]] },
-    { name: "Scale (Uniform)", matrix: [[1.5, 0, 0], [0, 1.5, 0], [0, 0, 1.5]] },
-    { name: "Scale (Non-uniform)", matrix: [[1.5, 0, 0], [0, 0.5, 0], [0, 0, 1]] },
-    { name: "Spiral Sink (XY)", matrix: [[1, -1, 0], [1, 1, 0], [0, 0, 0.8]] },
-    { name: "Spiral Source (XY)", matrix: [[1, -1, 0], [1, 1, 0], [0, 0, 1.2]] },
-    { name: "Saddle Point", matrix: [[1.2, 0, 0], [0, 0.8, 0], [0, 0, 1]] },
-    { name: "Custom", matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] }
+export const PRESET_MATRICES: { name: string; matrix: Matrix2 }[] = [
+    { name: "Rotation (2 rad)", matrix: INITIAL_MATRIX },
+    { name: "Shear X", matrix: [[1, 1], [0, 1]] },
+    { name: "Shear Y", matrix: [[1, 0], [1, 1]] },
+    { name: "Scale (Uniform)", matrix: [[1.5, 0], [0, 1.5]] },
+    { name: "Scale (Non-uniform)", matrix: [[1.5, 0], [0, 0.5]] },
+    { name: "Spiral Sink", matrix: [[0.9, -0.6], [0.6, 0.9]] },
+    { name: "Spiral Source", matrix: [[1.1, -0.6], [0.6, 1.1]] },
+    { name: "Saddle Point", matrix: [[1.2, 0], [0, 0.8]] },
+    { name: "Custom", matrix: [[1, 0], [0, 1]] }
 ];
 
 
 const VECTOR_COLORS = ['#f87171', '#60a5fa', '#facc15', '#4ade80', '#a78bfa', '#fb923c'];
 
 const INITIAL_VECTORS: VectorObject[] = [
-    { id: Date.now(), value: [2, 0, 0.5], visible: true, color: VECTOR_COLORS[0] }
+    { id: Date.now(), value: [2, 0], visible: true, color: VECTOR_COLORS[0] }
 ];
 
 const DOT_SIZE_DEFAULT = 0.08;
@@ -78,8 +80,8 @@ const TOUR_STEPS: TourStep[] = [
     },
     {
         id: 'scene',
-        title: '3D scene: follow the paths',
-        description: 'Drag to orbit, scroll to zoom. The highlighted vectors trace how A^t moves them; start the tour playback to see the motion live.',
+        title: '2D plane: follow the paths',
+        description: 'Watch the trajectories update as t changes. Hit Play to see how the vectors sweep the plane and light up wall contacts.',
         selector: '[data-tour-id="tour-scene"]',
         tab: 'controls'
     },
@@ -128,7 +130,7 @@ const TOUR_STEPS: TourStep[] = [
     {
         id: 'walls',
         title: 'Collision walls',
-        description: 'Add axis-aligned planes to track contact points. Handy when you want to see how each backend sends vectors into or through boundaries.',
+        description: 'Add axis-aligned lines to flag contact points. Handy when you want to see how each backend pushes vectors against boundaries.',
         selector: '[data-tour-id="tour-walls"]',
         tab: 'walls'
     },
@@ -149,33 +151,31 @@ const TOUR_STEPS: TourStep[] = [
     }
 ];
 
-const randomVector = (nonNegative = false): Vector3 => {
-    const base: Vector3 = [
-        Math.random() * 4 - 2,
+const randomVector = (nonNegative = false): Vector2 => {
+    const base: Vector2 = [
         Math.random() * 4 - 2,
         Math.random() * 4 - 2
     ];
     if (!nonNegative) {
         return base;
     }
-    return base.map(component => Math.abs(component)) as Vector3;
+    return base.map(component => Math.abs(component)) as Vector2;
 };
 
-const normalizeVectorValue = (value: Vector3): Vector3 => {
-    const [x, y, z] = value;
-    const length = Math.hypot(x, y, z);
+const normalizeVectorValue = (value: Vector2): Vector2 => {
+    const [x, y] = value;
+    const length = Math.hypot(x, y);
     if (!Number.isFinite(length) || length === 0) {
-        return [x, y, z];
+        return [x, y];
     }
-    return [x / length, y / length, z / length];
+    return [x / length, y / length];
 };
 
 const normalizeVectorObject = (vector: VectorObject): VectorObject => {
     const normalized = normalizeVectorValue(vector.value);
     if (
         normalized[0] === vector.value[0] &&
-        normalized[1] === vector.value[1] &&
-        normalized[2] === vector.value[2]
+        normalized[1] === vector.value[1]
     ) {
         return vector;
     }
@@ -184,17 +184,17 @@ const normalizeVectorObject = (vector: VectorObject): VectorObject => {
 
 const PATH_RESOLUTION = 100; // Number of steps per unit of t
 const CONTACT_TOLERANCE = 0.07;
-type TransformationsMap = Record<number, { initial: THREE.Vector3; final: THREE.Vector3 | null; fullPath: THREE.Vector3[] }>;
+type TransformationsMap = Record<number, { initial: Point2; final: Point2 | null; fullPath: Point2[] }>;
 interface WallContact {
     wallId: number;
     axis: Wall['axis'];
     position: number;
-    point: THREE.Vector3;
+    point: Point2;
     normalDirection: 1 | -1;
 }
 
 type Eigenvalue = { re: number; im: number };
-type TrailSample = { position: THREE.Vector3; timestamp: number; index: number };
+type TrailSample = { position: Point2; timestamp: number; index: number };
 
 interface BackendVisualization {
     backend: MatrixBackend;
@@ -208,18 +208,17 @@ const sanitizeNumber = (value: unknown, fallback: number): number => {
     return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const sanitizeMatrix3 = (input: unknown, fallback: Matrix3 = INITIAL_MATRIX): Matrix3 => {
+const sanitizeMatrix2 = (input: unknown, fallback: Matrix2 = INITIAL_MATRIX): Matrix2 => {
     if (!Array.isArray(input)) return fallback;
-    const rows: Vector3[] = [];
-    for (let i = 0; i < 3; i++) {
+    const rows: Vector2[] = [];
+    for (let i = 0; i < 2; i++) {
         const row = Array.isArray(input[i]) ? input[i] as unknown[] : [];
         rows.push([
             sanitizeNumber(row[0], fallback[i]?.[0] ?? 0),
-            sanitizeNumber(row[1], fallback[i]?.[1] ?? 0),
-            sanitizeNumber(row[2], fallback[i]?.[2] ?? 0),
-        ] as Vector3);
+            sanitizeNumber(row[1], fallback[i]?.[1] ?? 0)
+        ] as Vector2);
     }
-    return rows as Matrix3;
+    return rows as Matrix2;
 };
 
 const sanitizeVectors = (input: unknown, fallback: VectorObject[] = INITIAL_VECTORS): VectorObject[] => {
@@ -233,10 +232,9 @@ const sanitizeVectors = (input: unknown, fallback: VectorObject[] = INITIAL_VECT
             ? candidate.id
             : syntheticId++;
         const valueSource = Array.isArray(candidate.value) ? candidate.value : [];
-        const value: Vector3 = [
+        const value: Vector2 = [
             sanitizeNumber(valueSource[0], 0),
-            sanitizeNumber(valueSource[1], 0),
-            sanitizeNumber(valueSource[2], 0),
+            sanitizeNumber(valueSource[1], 0)
         ];
         const visible = typeof candidate.visible === 'boolean' ? candidate.visible : true;
         const color = typeof candidate.color === 'string' && candidate.color ? candidate.color : VECTOR_COLORS[id % VECTOR_COLORS.length] ?? '#ffffff';
@@ -247,7 +245,7 @@ const sanitizeVectors = (input: unknown, fallback: VectorObject[] = INITIAL_VECT
 
 const sanitizeWalls = (input: unknown): Wall[] => {
     if (!Array.isArray(input)) return [];
-    const axes: Wall['axis'][] = ['x', 'y', 'z'];
+    const axes: Wall['axis'][] = ['x', 'y'];
     const walls: Wall[] = [];
     let syntheticId = Date.now();
     for (const entry of input) {
@@ -309,12 +307,12 @@ const sanitizeProfileData = (data: ProfileData | null): ProfileData | null => {
     const ensureBoolean = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback;
     const preciseT = sanitizeNumber(data.tPrecision, 0.01);
     const safeT = sanitizeNumber(data.t, animationConfig.startT);
-    const clampedT = THREE.MathUtils.clamp(safeT, animationConfig.startT, animationConfig.endT);
+    const clampedT = clamp(safeT, animationConfig.startT, animationConfig.endT);
     const sanitizeBackend = (value: unknown): MatrixBackend => (value === 'exp-log' ? 'exp-log' : 'kan');
 
     return {
         version: data.version ?? 1,
-        matrixA: sanitizeMatrix3(data.matrixA),
+        matrixA: sanitizeMatrix2(data.matrixA),
         vectors: sanitizeVectors(data.vectors),
         walls: sanitizeWalls(data.walls),
         t: clampedT,
@@ -334,7 +332,7 @@ const sanitizeProfileData = (data: ProfileData | null): ProfileData | null => {
         matrixExponent: Math.max(1, Math.round(sanitizeNumber(data.matrixExponent, 1))),
         normalizeMatrix: ensureBoolean(data.normalizeMatrix, false),
         linearEigenInterpolation: ensureBoolean(data.linearEigenInterpolation, false),
-        dotSize: THREE.MathUtils.clamp(sanitizeNumber(data.dotSize, DOT_SIZE_DEFAULT), DOT_SIZE_MIN, DOT_SIZE_MAX),
+        dotSize: clamp(sanitizeNumber(data.dotSize, DOT_SIZE_DEFAULT), DOT_SIZE_MIN, DOT_SIZE_MAX),
         autoNormalizeVectors: ensureBoolean(data.autoNormalizeVectors, false),
         exploreRandomizeVectors: ensureBoolean(data.exploreRandomizeVectors, true),
         matrixBackend: sanitizeBackend(data.matrixBackend),
@@ -372,7 +370,7 @@ const mapEigenvalues = (
 
 function App() {
     // Core state
-    const [matrixA, setMatrixA] = useState<Matrix3>(INITIAL_MATRIX);
+    const [matrixA, setMatrixA] = useState<Matrix2>(INITIAL_MATRIX);
     const [vectors, setVectors] = useState<VectorObject[]>(INITIAL_VECTORS);
     const [autoNormalizeVectors, setAutoNormalizeVectors] = useState<boolean>(false);
     const [walls, setWalls] = useState<Wall[]>([]);
@@ -394,6 +392,7 @@ function App() {
     const [selectedPresetName, setSelectedPresetName] = useState(PRESET_MATRICES[0].name);
     const [matrixScalar, setMatrixScalar] = useState<number>(1);
     const [matrixExponent, setMatrixExponent] = useState<number>(1);
+    const [navigationSensitivity, setNavigationSensitivity] = useState<number>(0.75);
     const [normalizeMatrix, setNormalizeMatrix] = useState<boolean>(false);
     const [normalizationWarning, setNormalizationWarning] = useState<string | null>(null);
     const [linearEigenInterpolation, setLinearEigenInterpolation] = useState<boolean>(false);
@@ -575,7 +574,7 @@ function App() {
 
 
     // --- Handlers ---
-    const handleMatrixChange = useCallback((newMatrix: Matrix3) => {
+    const handleMatrixChange = useCallback((newMatrix: Matrix2) => {
         setMatrixA(newMatrix);
         setSelectedPresetName('Custom');
     }, []);
@@ -606,7 +605,7 @@ function App() {
         setVectors(prev => prev.filter(v => v.id !== id));
     }, []);
 
-    const handleVectorChange = useCallback((id: number, newValue: Vector3) => {
+    const handleVectorChange = useCallback((id: number, newValue: Vector2) => {
         setVectors(prev => prev.map(v => {
             if (v.id !== id) return v;
             const value = autoNormalizeVectors ? normalizeVectorValue(newValue) : newValue;
@@ -736,7 +735,7 @@ function App() {
 
     const handleDotSizeChange = useCallback((value: number) => {
         const baseValue = Number.isFinite(value) ? value : DOT_SIZE_DEFAULT;
-        const clamped = THREE.MathUtils.clamp(baseValue, DOT_SIZE_MIN, DOT_SIZE_MAX);
+        const clamped = clamp(baseValue, DOT_SIZE_MIN, DOT_SIZE_MAX);
         setDotSize(clamped);
     }, []);
 
@@ -764,10 +763,10 @@ function App() {
     }, []);
 
     const profileSnapshot = useMemo<ProfileData>(() => {
-        const clonedMatrix = matrixA.map(row => [...row] as Vector3) as Matrix3;
+        const clonedMatrix = matrixA.map(row => [...row] as Vector2) as Matrix2;
         const clonedVectors = vectors.map(vector => ({
             ...vector,
-            value: [...vector.value] as Vector3
+            value: [...vector.value] as Vector2
         }));
         const clonedWalls = walls.map(wall => ({ ...wall }));
         return {
@@ -803,6 +802,7 @@ function App() {
             linearEigenInterpolation,
             dotSize,
             autoNormalizeVectors,
+            navigationSensitivity,
             matrixBackend,
             compareBackends
         };
@@ -834,6 +834,7 @@ function App() {
         linearEigenInterpolation,
         dotSize,
         autoNormalizeVectors,
+        navigationSensitivity,
         matrixBackend,
         compareBackends
     ]);
@@ -863,6 +864,7 @@ function App() {
         setExploreRandomizeVectors(data.exploreRandomizeVectors);
         setMatrixBackend(data.matrixBackend);
         setCompareBackends(Boolean(data.compareBackends));
+        setNavigationSensitivity(data.navigationSensitivity ?? 0.75);
         setAnimationConfig({
             duration: data.animationConfig.duration,
             startT: data.animationConfig.startT,
@@ -977,8 +979,8 @@ function App() {
             return Number.isFinite(parsed) ? parsed : 0;
         };
 
-        const toMatrix3 = (input: number[][]): Matrix3 => {
-            return input.map(row => [toNumber(row[0]), toNumber(row[1]), toNumber(row[2])] as Vector3) as Matrix3;
+        const toMatrix2Local = (input: number[][]): Matrix2 => {
+            return input.map(row => [toNumber(row[0]), toNumber(row[1])] as Vector2) as Matrix2;
         };
 
         const safeScalar = Number.isFinite(matrixScalar) ? matrixScalar : 1;
@@ -989,7 +991,7 @@ function App() {
             const scaledMatrix = math.multiply(baseMatrix, safeScalar) as math.Matrix;
             const poweredMatrix = safeExponent === 1 ? scaledMatrix : (math.pow(scaledMatrix, safeExponent) as math.Matrix);
             const poweredArray = poweredMatrix.toArray() as number[][];
-            const adjustedMatrix = toMatrix3(poweredArray);
+            const adjustedMatrix = toMatrix2Local(poweredArray);
 
             const determinantBefore = Number(math.det(poweredMatrix));
             let normalizationApplied = false;
@@ -1001,10 +1003,10 @@ function App() {
                 if (Math.abs(determinantBefore) < 1e-8) {
                     normalizationFailed = true;
                 } else {
-                    const detRoot = Math.cbrt(Math.abs(determinantBefore));
+                    const detRoot = Math.sqrt(Math.abs(determinantBefore));
                     const normalizedMatrix = math.divide(poweredMatrix, detRoot) as math.Matrix;
                     const normalizedArray = normalizedMatrix.toArray() as number[][];
-                    effectiveMatrix = toMatrix3(normalizedArray);
+                    effectiveMatrix = toMatrix2Local(normalizedArray);
                     normalizationApplied = true;
                     determinantAfter = Number(math.det(normalizedMatrix));
                 }
@@ -1117,13 +1119,6 @@ function App() {
         return { times, range, totalSteps };
     }, [animationConfig.startT, animationConfig.endT, tPrecision]);
 
-    const matrixSamples = useMemo(() => {
-        if (!matrixEvaluator) return null;
-        const { times } = samplingConfig;
-        if (times.length === 0) return [];
-        return times.map(time => matrixEvaluator.getMatrixAt(time, { linearEigenInterpolation }));
-    }, [matrixEvaluator, samplingConfig, linearEigenInterpolation]);
-
     // --- Memoized Calculations ---
 
     const vectorTransformationsResult = useMemo(() => {
@@ -1174,7 +1169,7 @@ function App() {
             let calculationError = false;
 
             for (const vector of vectors) {
-                const fullPath: THREE.Vector3[] = [];
+                const fullPath: Point2[] = [];
 
                 for (const sample of samples) {
                     if (!sample) {
@@ -1182,16 +1177,16 @@ function App() {
                         break;
                     }
                     const rawPoint = multiplyMatrixVector(sample, vector.value);
-                    const activatedPoint = rawPoint.map(activationFn) as Vector3;
-                    fullPath.push(new THREE.Vector3(...activatedPoint));
+                    const activatedPoint = rawPoint.map(activationFn) as Vector2;
+                    fullPath.push({ x: activatedPoint[0], y: activatedPoint[1] });
                 }
                 if (calculationError || fullPath.length === 0) {
                     calculationError = true;
                     break;
                 }
 
-                const initial = fullPath[0]?.clone() ?? new THREE.Vector3(...vector.value.map(activationFn) as Vector3);
-                const final = fullPath[fullPath.length - 1]?.clone() ?? initial.clone();
+                const initial = fullPath[0] ?? { x: activationFn(vector.value[0]), y: activationFn(vector.value[1]) };
+                const final = fullPath[fullPath.length - 1] ?? initial;
 
                 transformations[vector.id] = { initial, final, fullPath };
             }
@@ -1236,20 +1231,7 @@ function App() {
         const range = animationConfig.endT - animationConfig.startT;
         if (range <= 0) return [];
 
-        const prevT = previousTRef.current;
-        const isReversing = t < prevT;
         previousTRef.current = t;
-        const axisAccess = {
-            x: (vec: THREE.Vector3) => vec.x,
-            y: (vec: THREE.Vector3) => vec.y,
-            z: (vec: THREE.Vector3) => vec.z
-        };
-
-        const setAxis = (vec: THREE.Vector3, axis: Wall['axis'], value: number) => {
-            if (axis === 'x') vec.setX(value);
-            if (axis === 'y') vec.setY(value);
-            if (axis === 'z') vec.setZ(value);
-        };
 
         const resolveNormalDirection = (primary: number, secondary?: number): 1 | -1 => {
             if (Math.abs(primary) > 1e-6) {
@@ -1261,24 +1243,26 @@ function App() {
             return 1;
         };
 
-        const computeContact = (wall: Wall, current: THREE.Vector3, previous: THREE.Vector3 | null): WallContact | null => {
-            const currentValue = axisAccess[wall.axis](current);
+        const computeContact = (wall: Wall, current: Point2, previous: Point2 | null): WallContact | null => {
+            const currentValue = wall.axis === 'x' ? current.x : current.y;
             const diffCurrent = currentValue - wall.position;
 
             if (Math.abs(diffCurrent) <= CONTACT_TOLERANCE) {
-                const contactPoint = current.clone();
-                setAxis(contactPoint, wall.axis, wall.position);
-                const normalDirection = resolveNormalDirection(diffCurrent, previous ? axisAccess[wall.axis](previous) - wall.position : undefined);
+                const contactPoint: Point2 = wall.axis === 'x'
+                    ? { x: wall.position, y: current.y }
+                    : { x: current.x, y: wall.position };
+                const normalDirection = resolveNormalDirection(diffCurrent, previous ? (wall.axis === 'x' ? previous.x : previous.y) - wall.position : undefined);
                 return { wallId: wall.id, axis: wall.axis, position: wall.position, point: contactPoint, normalDirection };
             }
 
             if (previous) {
-                const prevValue = axisAccess[wall.axis](previous);
+                const prevValue = wall.axis === 'x' ? previous.x : previous.y;
                 const diffPrev = prevValue - wall.position;
 
                 if (Math.abs(diffPrev) <= CONTACT_TOLERANCE) {
-                    const contactPoint = previous.clone();
-                    setAxis(contactPoint, wall.axis, wall.position);
+                    const contactPoint: Point2 = wall.axis === 'x'
+                        ? { x: wall.position, y: previous.y }
+                        : { x: previous.x, y: wall.position };
                     const normalDirection = resolveNormalDirection(diffPrev, diffCurrent);
                     return { wallId: wall.id, axis: wall.axis, position: wall.position, point: contactPoint, normalDirection };
                 }
@@ -1287,9 +1271,14 @@ function App() {
                     const denominator = currentValue - prevValue;
                     if (Math.abs(denominator) > 1e-8) {
                         const ratio = (wall.position - prevValue) / denominator;
-                        const clampedRatio = THREE.MathUtils.clamp(ratio, 0, 1);
-                        const contactPoint = previous.clone().lerp(current, clampedRatio);
-                        setAxis(contactPoint, wall.axis, wall.position);
+                        const clampedRatio = clamp(ratio, 0, 1);
+                        const interpolated = {
+                            x: lerp(previous.x, current.x, clampedRatio),
+                            y: lerp(previous.y, current.y, clampedRatio)
+                        };
+                        const contactPoint: Point2 = wall.axis === 'x'
+                            ? { x: wall.position, y: interpolated.y }
+                            : { x: interpolated.x, y: wall.position };
                         const normalDirection = resolveNormalDirection(diffCurrent, diffPrev);
                         return { wallId: wall.id, axis: wall.axis, position: wall.position, point: contactPoint, normalDirection };
                     }
@@ -1313,7 +1302,7 @@ function App() {
             });
         }
 
-        const entries: SceneObject[] = [];
+        const entries: SceneVectorEntry[] = [];
 
         visualizations.forEach(viz => {
             visibleVectors.forEach(vector => {
@@ -1323,15 +1312,15 @@ function App() {
                 }
                 const progress = (t - animationConfig.startT) / range;
                 const sliceEnd = Math.floor(progress * (transform.fullPath.length - 1));
-                const clampedIndex = THREE.MathUtils.clamp(sliceEnd, 0, transform.fullPath.length - 1);
+                const clampedIndex = clamp(sliceEnd, 0, transform.fullPath.length - 1);
                 const maxTrail = Math.min(fadingPathLength, transform.fullPath.length);
                 const cacheKey = `${viz.backend}-${vector.id}`;
 
-                let currentPath: THREE.Vector3[];
+                let currentPath: Point2[];
                 if (dynamicFadingPath && fadingPath) {
                     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
                     const maxSamples = Math.max(2, Math.min(maxTrail, Math.round(Math.max(2, fadingPathLength))));
-                    const windowMs = THREE.MathUtils.lerp(450, 6500, THREE.MathUtils.clamp(fadingPathLength / 400, 0, 1));
+                    const windowMs = lerp(450, 6500, clamp(fadingPathLength / 400, 0, 1));
 
                     let samples = dynamicTrailPointsRef.current.get(cacheKey) ?? [];
                     let prevIndexStored = previousSampleIndexRef.current.get(cacheKey);
@@ -1339,7 +1328,7 @@ function App() {
                     const pushSample = (index: number, timestamp: number) => {
                         const point = transform.fullPath[index];
                         if (!point) return;
-                        samples.push({ position: point.clone(), timestamp, index });
+                        samples.push({ position: { ...point }, timestamp, index });
                     };
 
                     if (prevIndexStored === undefined || prevIndexStored < 0 || prevIndexStored >= transform.fullPath.length) {
@@ -1385,7 +1374,7 @@ function App() {
 
                     dynamicTrailPointsRef.current.set(cacheKey, samples);
 
-                    currentPath = samples.map(sample => sample.position.clone());
+                    currentPath = samples.map(sample => ({ ...sample.position }));
                 } else {
                     previousSampleIndexRef.current.set(cacheKey, clampedIndex);
                     dynamicTrailPointsRef.current.delete(cacheKey);
@@ -1571,6 +1560,7 @@ function App() {
                         matrixExponent={matrixExponent}
                         normalizeMatrix={normalizeMatrix}
                         linearEigenInterpolation={linearEigenInterpolation}
+                        navigationSensitivity={navigationSensitivity}
                         matrixBackend={matrixBackend}
                         compareBackends={compareBackends}
                         normalizationWarning={normalizationWarning}
@@ -1606,6 +1596,7 @@ function App() {
                         onActivationConfigChange={setActivation}
                         onCompareBackendsChange={handleCompareBackendsToggle}
                         onMatrixBackendChange={handleMatrixBackendChange}
+                        onNavigationSensitivityChange={setNavigationSensitivity}
                         onAddWall={handleAddWall}
                         onUpdateWall={handleUpdateWall}
                         onRemoveWall={handleRemoveWall}
@@ -1627,12 +1618,13 @@ function App() {
                             dotMode={dotMode}
                             dotSize={dotSize}
                             fadingPath={fadingPath}
-                            fadingPathLength={fadingPathLength}
-                            fadingPathStyle={fadingPathStyle}
-                            showStartMarkers={showStartMarkers}
-                            showEndMarkers={showEndMarkers}
-                            dynamicFadingPath={dynamicFadingPath}
-                        />
+                        fadingPathLength={fadingPathLength}
+                        fadingPathStyle={fadingPathStyle}
+                        showStartMarkers={showStartMarkers}
+                        showEndMarkers={showEndMarkers}
+                        dynamicFadingPath={dynamicFadingPath}
+                        navigationSensitivity={navigationSensitivity}
+                    />
                         {compareBackends && vectorTransformationsResult.visualizations.length > 0 && (
                             <div className="absolute bottom-6 left-6 bg-gray-900/80 border border-gray-700 rounded-xl p-4 text-sm text-gray-200 shadow-xl pointer-events-auto">
                                 <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">Path Legend</p>
@@ -1674,7 +1666,7 @@ function App() {
                             determinantAtT={matrixAtDeterminant}
                             vectorV={firstVisibleVector?.value || null}
                             rawTransformedV={rawTransformedV}
-                            transformedV={firstVisibleSceneData?.interpolatedVector ? [firstVisibleSceneData.interpolatedVector.x, firstVisibleSceneData.interpolatedVector.y, firstVisibleSceneData.interpolatedVector.z] : null}
+                            transformedV={firstVisibleSceneData?.interpolatedVector ? [firstVisibleSceneData.interpolatedVector.x, firstVisibleSceneData.interpolatedVector.y] : null}
                             activationFnName={activation.name}
                             customActivationFnStr={activation.customFnStr}
                             onCollapse={() => setInfoPanelVisible(false)}

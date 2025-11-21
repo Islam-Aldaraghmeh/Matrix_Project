@@ -1,4 +1,4 @@
-import type { Matrix3, Vector3, VectorObject, Wall, FadingPathStyle } from '../types';
+import type { Matrix2, Vector2, VectorObject, Wall, FadingPathStyle } from '../types';
 import type { MatrixBackend } from './mathUtils';
 
 export interface AnimationConfigSnapshot {
@@ -15,7 +15,7 @@ export interface ActivationSnapshot {
 
 export interface ProfileData {
     version: number;
-    matrixA: Matrix3;
+    matrixA: Matrix2;
     vectors: VectorObject[];
     walls: Wall[];
     t: number;
@@ -40,6 +40,7 @@ export interface ProfileData {
     exploreRandomizeVectors: boolean;
     matrixBackend: MatrixBackend;
     compareBackends?: boolean;
+    navigationSensitivity?: number;
 }
 
 export interface ProfileSummary {

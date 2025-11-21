@@ -1,9 +1,9 @@
 import React from 'react';
-import type { Matrix3, Vector3, Wall } from '../types';
+import type { Matrix2, Vector2, Wall } from '../types';
 
 interface InfoPanelProps {
-    baseMatrix: Matrix3;
-    effectiveMatrix: Matrix3 | null;
+    baseMatrix: Matrix2;
+    effectiveMatrix: Matrix2 | null;
     matrixScalar: number;
     matrixExponent: number;
     normalizeRequested: boolean;
@@ -15,29 +15,29 @@ interface InfoPanelProps {
     wallContactCounts: Record<number, number>;
     eigenvalues: { re: number; im: number }[] | null;
     eigenvaluesAtT: { re: number; im: number }[] | null;
-    matrixAt: Matrix3 | null;
+    matrixAt: Matrix2 | null;
     determinantAtT: number | null;
-    vectorV: Vector3 | null;
-    rawTransformedV: Vector3 | null;
-    transformedV: Vector3 | null;
+    vectorV: Vector2 | null;
+    rawTransformedV: Vector2 | null;
+    transformedV: Vector2 | null;
     activationFnName: string;
     customActivationFnStr: string;
     onCollapse?: () => void;
 }
 
-const formatNum = (n: number | undefined) => (n !== undefined && isFinite(n) ? n.toFixed(2).padStart(7, ' ') : '  -    ');
+const formatNum = (n: number | undefined) => (n !== undefined && isFinite(n) ? n.toFixed(2).padStart(6, ' ') : '  -   ');
 
-const formatVector = (v: Vector3 | null): string => {
-    if (!v) return `[${formatNum(undefined)},${formatNum(undefined)},${formatNum(undefined)}]`;
-    return `[${formatNum(v[0])},${formatNum(v[1])},${formatNum(v[2])}]`;
+const formatVector = (v: Vector2 | null): string => {
+    if (!v) return `[${formatNum(undefined)},${formatNum(undefined)}]`;
+    return `[${formatNum(v[0])},${formatNum(v[1])}]`;
 };
 
-const formatMatrix = (m: Matrix3 | null): string => {
+const formatMatrix = (m: Matrix2 | null): string => {
     if (!m) {
          const loadingRow = `| ${formatVector(null)} |`;
-         return `${loadingRow}\n${loadingRow}\n${loadingRow}`;
+         return `${loadingRow}\n${loadingRow}`;
     }
-    return m.map(row => `|${formatNum(row[0])},${formatNum(row[1])},${formatNum(row[2])}|`).join('\n');
+    return m.map(row => `|${formatNum(row[0])},${formatNum(row[1])}|`).join('\n');
 };
 
 const formatScalar = (value: number): string => {
